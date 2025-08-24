@@ -49,9 +49,8 @@ type Shot = { x: number, y: number, t: number, hand: number }
 let shots: Shot[] = []
 const wasFlexed: boolean[] = [false, false]
 const PINCH_LIFETIME = 1500 // ms
-// Hysteresis thresholds (relative to index base->tip length)
-const FLEX_ON_FACTOR = 0.28
-const FLEX_OFF_FACTOR = 0.18
+// Simple vertical threshold: thumb middle (3) must be higher than thumb tip (4) by this many px
+const FLEX_Y_THRESH = 6
 const SMOOTH_ALPHA = 0.25 // 0..1; higher = snappier
 const DIR_BETA = 0.3 // smoothing for direction
 // Store calibration as direction vectors + apparent finger length (mirrored-corrected)
@@ -211,7 +210,7 @@ function drawDot() {
     ctx.restore()
 
     // Thumb-flex shoot: when thumb middle (3) is above thumb tip (4)
-    const isFlexed = isThumbFlexed(i, len, wasFlexed[i])
+    const isFlexed = isThumbFlexed(i)
     if (isFlexed && !wasFlexed[i]) {
       shots.push({ x: fx, y: fy, t: now, hand: i })
       if (shots.length > 100) shots.shift()
@@ -273,21 +272,15 @@ function intersectRayWithRect(origin: { x: number, y: number }, dir: { x: number
   return { x: candidates[0].x, y: candidates[0].y }
 }
 
-function isThumbFlexed(handIndex: number, indexLen: number, prev: boolean): boolean {
+function isThumbFlexed(handIndex: number): boolean {
   const canvas = screenCanvasRef.value
   const hands = landmarks.value
   if (!canvas || !hands || !hands[handIndex]) return false
   const lm = hands[handIndex]
   const tip = { x: lm[4].x * canvas.width, y: lm[4].y * canvas.height } // thumb tip
   const mid = { x: lm[3].x * canvas.width, y: lm[3].y * canvas.height } // thumb middle (IP)
-  // In canvas coords, smaller y is visually higher (up)
-  const onThresh = tip.y + FLEX_ON_FACTOR * indexLen
-  const offThresh = tip.y + FLEX_OFF_FACTOR * indexLen
-  if (!prev) {
-    return mid.y < onThresh
-  } else {
-    return mid.y < offThresh
-  }
+  // In canvas coordinates, smaller y is higher. Flexed when middle is higher than tip by a margin.
+  return (mid.y + FLEX_Y_THRESH) < tip.y
 }
 
 function drawMiniHandOverlay() {
