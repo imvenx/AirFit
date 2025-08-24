@@ -68,6 +68,11 @@ export default {
       name: 'Runner',
       description: 'Run and jump through obstacles!'
     }
+    ,
+    'pointer-test': {
+      name: 'Pointer Test',
+      description: 'Empty placeholder for pointer testing'
+    }
   },
   category: {
     fitness: 'fitness',

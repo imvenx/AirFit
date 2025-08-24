@@ -295,6 +295,26 @@ export const gameConfigs: GameConfig[] = [
     loadingText: 'Loading Test2 ArUco2...',
     startButtonText: 'Start Test2 ArUco2',
     showBackButton: true
+  },
+  {
+    id: 'pointer-test',
+    name: 'Pointer Test',
+    description: 'Empty placeholder for pointer testing',
+    icon: '🖱️',
+    component: 'PointerTest',
+    requiresCamera: false,
+    requiresHandTracking: false,
+    requiresPoseTracking: false,
+    requiresGestureRecognition: false,
+    category: 'utility',
+    difficulty: 'easy',
+    estimatedDuration: 1,
+    isActive: true,
+    devOnly: true,
+    rules: 'Placeholder game for testing pointers',
+    loadingText: 'Loading Pointer Test...',
+    startButtonText: 'Start Pointer Test',
+    showBackButton: true
   }
 ]
 
