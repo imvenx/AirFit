@@ -43,6 +43,14 @@ const lastDir: Array<{ x: number, y: number }> = [
 ]
 // Output smoothing (per-hand)
 const filteredPos: Array<{ x: number, y: number } | null> = [null, null]
+// Pinch-to-shoot state
+type Shot = { x: number, y: number, t: number, hand: number }
+let shots: Shot[] = []
+const wasFlexed: boolean[] = [false, false]
+const PINCH_LIFETIME = 1500 // ms
+// Hysteresis thresholds (relative to index base->tip length)
+const FLEX_ON_FACTOR = 0.28
+const FLEX_OFF_FACTOR = 0.18
 const SMOOTH_ALPHA = 0.25 // 0..1; higher = snappier
 const DIR_BETA = 0.3 // smoothing for direction
 // Store calibration as direction vectors + apparent finger length (mirrored-corrected)
@@ -80,6 +88,22 @@ function drawDot() {
   if (!canvas || !ctx) return
 
   ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+  // Draw and decay existing shots regardless of hand presence
+  const now = performance.now()
+  shots = shots.filter(s => now - s.t < PINCH_LIFETIME)
+  for (const s of shots) {
+    const age = (now - s.t) / PINCH_LIFETIME
+    const alpha = 1 - Math.min(1, Math.max(0, age))
+    const r = 10 - 6 * age
+    ctx.save()
+    ctx.fillStyle = s.hand === 0 ? `rgba(255, 215, 0, ${alpha})` : `rgba(0, 200, 255, ${alpha})`
+    ctx.beginPath()
+    ctx.arc(s.x, s.y, Math.max(3, r), 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+
   if (!hands || hands.length === 0) return
 
   for (let i = 0; i < Math.min(hands.length, 2); i++) {
@@ -184,6 +208,14 @@ function drawDot() {
     ctx.arc(fx, fy, 8, 0, Math.PI * 2)
     ctx.fill()
     ctx.restore()
+
+    // Thumb-flex shoot: when thumb middle (3) is above thumb tip (4)
+    const isFlexed = isThumbFlexed(i, len, wasFlexed[i])
+    if (isFlexed && !wasFlexed[i]) {
+      shots.push({ x: fx, y: fy, t: now, hand: i })
+      if (shots.length > 100) shots.shift()
+    }
+    wasFlexed[i] = isFlexed
   }
 }
 
@@ -227,6 +259,23 @@ function intersectRayWithRect(origin: { x: number, y: number }, dir: { x: number
   return { x: candidates[0].x, y: candidates[0].y }
 }
 
+function isThumbFlexed(handIndex: number, indexLen: number, prev: boolean): boolean {
+  const canvas = screenCanvasRef.value
+  const hands = landmarks.value
+  if (!canvas || !hands || !hands[handIndex]) return false
+  const lm = hands[handIndex]
+  const tip = { x: lm[4].x * canvas.width, y: lm[4].y * canvas.height } // thumb tip
+  const mid = { x: lm[3].x * canvas.width, y: lm[3].y * canvas.height } // thumb middle (IP)
+  // In canvas coords, smaller y is visually higher (up)
+  const onThresh = tip.y + FLEX_ON_FACTOR * indexLen
+  const offThresh = tip.y + FLEX_OFF_FACTOR * indexLen
+  if (!prev) {
+    return mid.y < onThresh
+  } else {
+    return mid.y < offThresh
+  }
+}
+
 function drawMiniHandOverlay() {
   const canvas = miniCanvasRef.value
   const ctx = canvas?.getContext('2d')
@@ -238,8 +287,10 @@ function drawMiniHandOverlay() {
 
   for (let i = 0; i < Math.min(hands.length, 2); i++) {
     const lm = hands[i]
-    const base = { x: lm[5].x * canvas.width, y: lm[5].y * canvas.height }
-    const tip = { x: lm[8].x * canvas.width, y: lm[8].y * canvas.height }
+    const base = { x: lm[5].x * canvas.width, y: lm[5].y * canvas.height } // index base (MCP)
+    const tip = { x: lm[8].x * canvas.width, y: lm[8].y * canvas.height }   // index tip
+    const thumb = { x: lm[4].x * canvas.width, y: lm[4].y * canvas.height } // thumb tip
+    const thumbMid = { x: lm[3].x * canvas.width, y: lm[3].y * canvas.height } // thumb middle (IP)
 
     ctx.strokeStyle = i === 0 ? 'rgba(255, 215, 0, 0.9)' : 'rgba(0, 200, 255, 0.9)'
     ctx.lineWidth = 3
@@ -252,6 +303,12 @@ function drawMiniHandOverlay() {
     ctx.beginPath(); ctx.arc(base.x, base.y, 4, 0, Math.PI * 2); ctx.fill()
     ctx.fillStyle = i === 0 ? 'rgba(255, 215, 0, 1)' : 'rgba(0, 200, 255, 1)'
     ctx.beginPath(); ctx.arc(tip.x, tip.y, 5, 0, Math.PI * 2); ctx.fill()
+    // Draw thumb tip as well (pink)
+    ctx.fillStyle = 'rgba(255, 105, 180, 1)'
+    ctx.beginPath(); ctx.arc(thumb.x, thumb.y, 4, 0, Math.PI * 2); ctx.fill()
+    // Draw thumb middle (orange)
+    ctx.fillStyle = 'rgba(255, 165, 0, 1)'
+    ctx.beginPath(); ctx.arc(thumbMid.x, thumbMid.y, 4, 0, Math.PI * 2); ctx.fill()
   }
 }
 
