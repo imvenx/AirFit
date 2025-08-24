@@ -1,0 +1,59 @@
+<svg width="300" height="400" viewBox="0 0 300 400" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .person-body {
+      fill: #4A4A4A; /* A modern, neutral dark grey */
+    }
+  </style>
+
+  <!-- Static parts of the body: Torso, Legs, Head, Left Arm -->
+  <g class="person-body">
+    <!-- Head -->
+    <circle cx="150" cy="70" r="22" />
+    
+    <!-- Torso and Left Arm -->
+    <path d="M150,92 
+             C 165,95, 170,110, 170,130 
+             L 170,180 
+             C 170,185, 165,190, 150,190 
+             S 130,185, 130,180 
+             L 130,130 
+             C 130,110, 135,95, 150,92 Z
+             M130,125 
+             L 115,210 
+             L 130,210 
+             L 140,135 Z" />
+
+    <!-- Legs -->
+    <path d="M150,190 
+             L 140,280 
+             C 140,290, 130,300, 120,300 
+             S 100,290, 100,280 
+             L 110,190 Z" />
+    <path d="M150,190 
+             L 160,280 
+             C 160,290, 170,300, 180,300 
+             S 200,290, 200,280 
+             L 190,190 Z" />
+  </g>
+
+  <!-- Waving Arm (Right) -->
+  <g class="person-body">
+    <path d="M170,125 
+             C 180,135, 185,145, 195,135 
+             L 225,95 
+             C 235,85, 230,70, 220,65 
+             S 200,75, 195,85 
+             L 170,120 Z" >
+      <animateTransform 
+          attributeName="transform" 
+          attributeType="XML"
+          type="rotate"
+          from="-15 165 115" 
+          to="10 165 115"
+          dur="1.5s"
+          repeatCount="indefinite"
+          values="-15 165 115; 10 165 115; -15 165 115"
+          keyTimes="0; 0.5; 1" />
+    </path>
+  </g>
+</svg>

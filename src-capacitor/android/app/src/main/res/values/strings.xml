@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BubbleBop!</string>
+    <string name="title_activity_main">BubbleBop!</string>
+    <string name="package_name">com.nexype.bubblebopar</string>
+    <string name="custom_url_scheme">com.nexype.bubblebopar</string>
+</resources>

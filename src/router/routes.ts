@@ -1,0 +1,22 @@
+import { RouteRecordRaw } from 'vue-router';
+
+const routes: RouteRecordRaw[] = [
+  {
+    path: '/',
+    component: () => import('layouts/MainLayout.vue'),
+    children: [
+      { path: '', name: 'MainMenu', component: () => import('pages/MainMenu.vue') },
+      { path: 'game', name: 'GamePage', component: () => import('pages/GamePage.vue') },
+      { path: 'game/:gameId', name: 'GameWithId', component: () => import('pages/GamePage.vue') },
+    ],
+  },
+
+  // Always leave this as last one,
+  // but you can also remove it
+  {
+    path: '/:catchAll(.*)*',
+    component: () => import('pages/ErrorNotFound.vue'),
+  },
+];
+
+export default routes;

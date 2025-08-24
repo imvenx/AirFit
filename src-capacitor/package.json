@@ -1,0 +1,13 @@
+{
+  "name": "bubble-bop",
+  "version": "0.0.1",
+  "description": "Camera Sports Fitness Workout Games",
+  "author": "imvenx <imvenx@proton.me>",
+  "private": true,
+  "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/core": "^6.2.1"
+  }
+}
