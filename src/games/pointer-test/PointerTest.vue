@@ -34,12 +34,15 @@ import { useHandTracking } from 'src/composables/useHandTracking'
 const videoRef = ref<HTMLVideoElement | null>(null)
 const screenCanvasRef = ref<HTMLCanvasElement | null>(null)
 const miniCanvasRef = ref<HTMLCanvasElement | null>(null)
-// Auto-calibration for uncalibrated mode
-const autoMinLen = ref<number | null>(null)
-const autoMaxLen = ref<number | null>(null)
-const lastDir = ref<{ x: number, y: number }>({ x: 1, y: 0 })
-// Output smoothing
-const filteredPos = ref<{ x: number, y: number } | null>(null)
+// Auto-calibration for uncalibrated mode (per-hand)
+const autoMinLen: Array<number | null> = [null, null]
+const autoMaxLen: Array<number | null> = [null, null]
+const lastDir: Array<{ x: number, y: number }> = [
+  { x: 1, y: 0 },
+  { x: 1, y: 0 }
+]
+// Output smoothing (per-hand)
+const filteredPos: Array<{ x: number, y: number } | null> = [null, null]
 const SMOOTH_ALPHA = 0.25 // 0..1; higher = snappier
 const DIR_BETA = 0.3 // smoothing for direction
 // Store calibration as direction vectors + apparent finger length (mirrored-corrected)
@@ -48,7 +51,7 @@ const calibTopRight = ref<{ dx: number, dy: number, len: number } | null>(null)
 const calibBottomLeft = ref<{ dx: number, dy: number, len: number } | null>(null)
 const calibBottomRight = ref<{ dx: number, dy: number, len: number } | null>(null)
 const { enableCamera, stopCamera, error } = useCamera(videoRef)
-const { initializeHandTracking, startTracking, stopTracking, landmarks } = useHandTracking(videoRef, screenCanvasRef, 1)
+const { initializeHandTracking, startTracking, stopTracking, landmarks } = useHandTracking(videoRef, screenCanvasRef, 2)
 
 function resizeScreenCanvas() {
   const canvas = screenCanvasRef.value
@@ -79,139 +82,116 @@ function drawDot() {
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   if (!hands || hands.length === 0) return
 
-  let drawX = 0
-  let drawY = 0
+  for (let i = 0; i < Math.min(hands.length, 2); i++) {
+    let drawX = 0
+    let drawY = 0
+    const { tip, dir, len, valid } = getTipAndDirection(i)
+    if (!valid) continue
 
-  const { tip, dir, len, valid } = getTipAndDirection()
-  if (!valid) return
+    if (calibTopLeft.value && calibTopRight.value && calibBottomLeft.value && calibBottomRight.value) {
+      const tl = calibTopLeft.value
+      const tr = calibTopRight.value
+      const bl = calibBottomLeft.value
+      const br = calibBottomRight.value
 
-  if (calibTopLeft.value && calibTopRight.value && calibBottomLeft.value && calibBottomRight.value) {
-    // 4-corner calibration: derive per-axis boundaries from corners
-    const tl = calibTopLeft.value
-    const tr = calibTopRight.value
-    const bl = calibBottomLeft.value
-    const br = calibBottomRight.value
+      const leftX = (tl.dx + bl.dx) * 0.5
+      const rightX = (tr.dx + br.dx) * 0.5
+      const topY = (tl.dy + tr.dy) * 0.5
+      const bottomY = (bl.dy + br.dy) * 0.5
 
-    const leftX = (tl.dx + bl.dx) * 0.5
-    const rightX = (tr.dx + br.dx) * 0.5
-    const topY = (tl.dy + tr.dy) * 0.5
-    const bottomY = (bl.dy + br.dy) * 0.5
+      let sx_dir = 0.5
+      let sy_dir = 0.5
+      const denomX = (rightX - leftX)
+      const denomY = (bottomY - topY)
+      if (Math.abs(denomX) > 1e-6) sx_dir = (dir.x - leftX) / denomX
+      if (Math.abs(denomY) > 1e-6) sy_dir = (dir.y - topY) / denomY
 
-    // Direction-based normalized pos
-    let sx_dir = 0.5
-    let sy_dir = 0.5
-    const denomX = (rightX - leftX)
-    const denomY = (bottomY - topY)
-    if (Math.abs(denomX) > 1e-6) sx_dir = (dir.x - leftX) / denomX
-    if (Math.abs(denomY) > 1e-6) sy_dir = (dir.y - topY) / denomY
+      const leftLen = (tl.len + bl.len) * 0.5
+      const rightLen = (tr.len + br.len) * 0.5
+      const topLen = (tl.len + tr.len) * 0.5
+      const bottomLen = (bl.len + br.len) * 0.5
+      let sx_len = 0.5
+      let sy_len = 0.5
+      const denomLX = (rightLen - leftLen)
+      const denomLY = (bottomLen - topLen)
+      if (Math.abs(denomLX) > 1e-6) sx_len = (len - leftLen) / denomLX
+      if (Math.abs(denomLY) > 1e-6) sy_len = (len - topLen) / denomLY
 
-    // Length-based boundaries (average per edge)
-    const leftLen = (tl.len + bl.len) * 0.5
-    const rightLen = (tr.len + br.len) * 0.5
-    const topLen = (tl.len + tr.len) * 0.5
-    const bottomLen = (bl.len + br.len) * 0.5
-    let sx_len = 0.5
-    let sy_len = 0.5
-    const denomLX = (rightLen - leftLen)
-    const denomLY = (bottomLen - topLen)
-    if (Math.abs(denomLX) > 1e-6) sx_len = (len - leftLen) / denomLX
-    if (Math.abs(denomLY) > 1e-6) sy_len = (len - topLen) / denomLY
+      const wLen = 0.4
+      const sx = clamp((1 - wLen) * sx_dir + wLen * sx_len, 0, 1)
+      const sy = clamp((1 - wLen) * sy_dir + wLen * sy_len, 0, 1)
+      drawX = sx * canvas.width
+      drawY = sy * canvas.height
+    } else if (calibTopLeft.value && calibBottomRight.value) {
+      const tl = calibTopLeft.value
+      const br = calibBottomRight.value
+      const denomX = (br.dx - tl.dx)
+      const denomY = (br.dy - tl.dy)
+      const denomL = (br.len - tl.len)
+      let sx_dir = 0.5
+      let sy_dir = 0.5
+      if (Math.abs(denomX) > 1e-6) sx_dir = (dir.x - tl.dx) / denomX
+      if (Math.abs(denomY) > 1e-6) sy_dir = (dir.y - tl.dy) / denomY
+      let s_len = 0.5
+      if (Math.abs(denomL) > 1e-6) s_len = (len - tl.len) / denomL
+      const wLen = 0.5
+      let sx = clamp((1 - wLen) * sx_dir + wLen * s_len, 0, 1)
+      let sy = clamp((1 - wLen) * sy_dir + wLen * s_len, 0, 1)
+      drawX = sx * canvas.width
+      drawY = sy * canvas.height
+    } else if (calibTopLeft.value && !calibBottomRight.value) {
+      drawX = 0
+      drawY = 0
+    } else if (!calibTopLeft.value && calibBottomRight.value) {
+      drawX = canvas.width
+      drawY = canvas.height
+    } else {
+      if (autoMinLen[i] === null) autoMinLen[i] = len
+      if (autoMaxLen[i] === null) autoMaxLen[i] = len
+      autoMinLen[i] = Math.min(autoMinLen[i] as number, len)
+      autoMaxLen[i] = Math.max(autoMaxLen[i] as number, len)
+      const range = Math.max(1e-3, (autoMaxLen[i] as number) - (autoMinLen[i] as number))
+      autoMinLen[i] = (autoMinLen[i] as number) + 0.001 * range
+      autoMaxLen[i] = (autoMaxLen[i] as number) - 0.001 * range
 
-    const wLen = 0.4
-    const sx = clamp((1 - wLen) * sx_dir + wLen * sx_len, 0, 1)
-    const sy = clamp((1 - wLen) * sy_dir + wLen * sy_len, 0, 1)
-    drawX = sx * canvas.width
-    drawY = sy * canvas.height
-  } else if (calibTopLeft.value && calibBottomRight.value) {
-    // Solve per-axis linear map: s = a * d + b with constraints
-    // tl -> 0, br -> 1
-    const tl = calibTopLeft.value
-    const br = calibBottomRight.value
+      const m = clamp((len - (autoMinLen[i] as number)) / Math.max(1e-6, (autoMaxLen[i] as number) - (autoMinLen[i] as number)), 0, 1)
 
-    const denomX = (br.dx - tl.dx)
-    const denomY = (br.dy - tl.dy)
-    const denomL = (br.len - tl.len)
+      let lx = (1 - DIR_BETA) * lastDir[i].x + DIR_BETA * dir.x
+      let ly = (1 - DIR_BETA) * lastDir[i].y + DIR_BETA * dir.y
+      const lnorm = Math.hypot(lx, ly) || 1
+      lastDir[i] = { x: lx / lnorm, y: ly / lnorm }
+      const dirUse = lastDir[i]
 
-    // Direction-based normalized position per axis
-    let sx_dir = 0.5
-    let sy_dir = 0.5
-    if (Math.abs(denomX) > 1e-6) sx_dir = (dir.x - tl.dx) / denomX
-    if (Math.abs(denomY) > 1e-6) sy_dir = (dir.y - tl.dy) / denomY
+      const center = { x: canvas.width * 0.5, y: canvas.height * 0.5 }
+      const edge = intersectRayWithRect(center, dirUse, canvas.width, canvas.height)
+      if (!edge) continue
+      drawX = center.x + m * (edge.x - center.x)
+      drawY = center.y + m * (edge.y - center.y)
+    }
 
-    // Length-based normalized position (single scalar applied to both axes)
-    let s_len = 0.5
-    if (Math.abs(denomL) > 1e-6) s_len = (len - tl.len) / denomL
+    if (!filteredPos[i]) {
+      filteredPos[i] = { x: drawX, y: drawY }
+    } else {
+      filteredPos[i]!.x += SMOOTH_ALPHA * (drawX - filteredPos[i]!.x)
+      filteredPos[i]!.y += SMOOTH_ALPHA * (drawY - filteredPos[i]!.y)
+    }
+    const fx = clamp(filteredPos[i]!.x, 0, canvas.width)
+    const fy = clamp(filteredPos[i]!.y, 0, canvas.height)
 
-    // Blend direction and length for interior mapping
-    const wLen = 0.5 // weight for length contribution
-    let sx = clamp((1 - wLen) * sx_dir + wLen * s_len, 0, 1)
-    let sy = clamp((1 - wLen) * sy_dir + wLen * s_len, 0, 1)
-    drawX = sx * canvas.width
-    drawY = sy * canvas.height
-  } else if (calibTopLeft.value && !calibBottomRight.value) {
-    // Only TL calibrated: map current indication to TL immediately
-    drawX = 0
-    drawY = 0
-  } else if (!calibTopLeft.value && calibBottomRight.value) {
-    // Only BR calibrated: map current indication to BR immediately
-    drawX = canvas.width
-    drawY = canvas.height
-  } else {
-    // No calibration: auto-calibrate based on apparent finger length
-    // 1) Track dynamic min/max length
-    if (autoMinLen.value === null) autoMinLen.value = len
-    if (autoMaxLen.value === null) autoMaxLen.value = len
-    autoMinLen.value = Math.min(autoMinLen.value, len)
-    autoMaxLen.value = Math.max(autoMaxLen.value, len)
-    // Slow relaxation so ranges adapt over time
-    const range = Math.max(1e-3, autoMaxLen.value - autoMinLen.value)
-    autoMinLen.value += 0.001 * range
-    autoMaxLen.value -= 0.001 * range
-
-    // 2) Normalize length to [0,1]
-    const m = clamp((len - autoMinLen.value) / Math.max(1e-6, autoMaxLen.value - autoMinLen.value), 0, 1)
-
-    // 3) Use stable direction; if nearly zero length, keep last direction
-    // Smooth direction to reduce jitter
-    let lx = (1 - DIR_BETA) * lastDir.value.x + DIR_BETA * dir.x
-    let ly = (1 - DIR_BETA) * lastDir.value.y + DIR_BETA * dir.y
-    const lnorm = Math.hypot(lx, ly) || 1
-    lastDir.value = { x: lx / lnorm, y: ly / lnorm }
-    const dirUse = lastDir.value
-
-    // 4) From screen center, march toward the edge along dirUse scaled by m
-    const center = { x: canvas.width * 0.5, y: canvas.height * 0.5 }
-    const edge = intersectRayWithRect(center, dirUse, canvas.width, canvas.height)
-    if (!edge) return
-    drawX = center.x + m * (edge.x - center.x)
-    drawY = center.y + m * (edge.y - center.y)
+    ctx.save()
+    ctx.fillStyle = i === 0 ? 'rgba(255, 215, 0, 0.95)' : 'rgba(0, 200, 255, 0.95)'
+    ctx.beginPath()
+    ctx.arc(fx, fy, 8, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
   }
-
-  // Final smoothing on the dot position
-  if (!filteredPos.value) {
-    filteredPos.value = { x: drawX, y: drawY }
-  } else {
-    filteredPos.value.x += SMOOTH_ALPHA * (drawX - filteredPos.value.x)
-    filteredPos.value.y += SMOOTH_ALPHA * (drawY - filteredPos.value.y)
-  }
-
-  const fx = clamp(filteredPos.value.x, 0, canvas.width)
-  const fy = clamp(filteredPos.value.y, 0, canvas.height)
-
-  // Draw just a dot/circle at the position
-  ctx.save()
-  ctx.fillStyle = 'rgba(255, 215, 0, 0.95)'
-  ctx.beginPath()
-  ctx.arc(fx, fy, 8, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.restore()
 }
 
-function getTipAndDirection() {
+function getTipAndDirection(handIndex: number = 0) {
   const canvas = screenCanvasRef.value
   const hands = landmarks.value
-  if (!canvas || !hands || hands.length === 0) return { tip: { x: 0, y: 0 }, dir: { x: 0, y: 0 }, len: 0, valid: false }
-  const lm = hands[0]
+  if (!canvas || !hands || hands.length === 0 || !hands[handIndex]) return { tip: { x: 0, y: 0 }, dir: { x: 0, y: 0 }, len: 0, valid: false }
+  const lm = hands[handIndex]
   // Use index direction (BASE MCP(5) -> TIP(8)). Mirror horizontally to match UI.
   const tip = { x: lm[8].x * canvas.width, y: lm[8].y * canvas.height }
   const base = { x: lm[5].x * canvas.width, y: lm[5].y * canvas.height }
@@ -256,24 +236,23 @@ function drawMiniHandOverlay() {
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   if (!hands || hands.length === 0) return
 
-  // Draw only the two points used by the mapping: index BASE MCP (5) and TIP (8)
-  const lm = hands[0]
-  const base = { x: lm[5].x * canvas.width, y: lm[5].y * canvas.height }
-  const tip = { x: lm[8].x * canvas.width, y: lm[8].y * canvas.height }
+  for (let i = 0; i < Math.min(hands.length, 2); i++) {
+    const lm = hands[i]
+    const base = { x: lm[5].x * canvas.width, y: lm[5].y * canvas.height }
+    const tip = { x: lm[8].x * canvas.width, y: lm[8].y * canvas.height }
 
-  // Line between BASE and TIP
-  ctx.strokeStyle = 'rgba(255, 215, 0, 0.9)'
-  ctx.lineWidth = 3
-  ctx.beginPath()
-  ctx.moveTo(base.x, base.y)
-  ctx.lineTo(tip.x, tip.y)
-  ctx.stroke()
+    ctx.strokeStyle = i === 0 ? 'rgba(255, 215, 0, 0.9)' : 'rgba(0, 200, 255, 0.9)'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(base.x, base.y)
+    ctx.lineTo(tip.x, tip.y)
+    ctx.stroke()
 
-  // Points
-  ctx.fillStyle = 'rgba(0, 255, 255, 0.95)'
-  ctx.beginPath(); ctx.arc(base.x, base.y, 4, 0, Math.PI * 2); ctx.fill()
-  ctx.fillStyle = 'rgba(255, 215, 0, 1)'
-  ctx.beginPath(); ctx.arc(tip.x, tip.y, 5, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
+    ctx.beginPath(); ctx.arc(base.x, base.y, 4, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = i === 0 ? 'rgba(255, 215, 0, 1)' : 'rgba(0, 200, 255, 1)'
+    ctx.beginPath(); ctx.arc(tip.x, tip.y, 5, 0, Math.PI * 2); ctx.fill()
+  }
 }
 
 onMounted(async () => {
@@ -306,22 +285,26 @@ watch(landmarks, () => {
 })
 
 function calibrateTopLeft() {
-  const { dir, len, valid } = getTipAndDirection()
+  const idx = getActiveHandIndex()
+  const { dir, len, valid } = getTipAndDirection(idx)
   if (valid) calibTopLeft.value = { dx: dir.x, dy: dir.y, len }
 }
 
 function calibrateTopRight() {
-  const { dir, len, valid } = getTipAndDirection()
+  const idx = getActiveHandIndex()
+  const { dir, len, valid } = getTipAndDirection(idx)
   if (valid) calibTopRight.value = { dx: dir.x, dy: dir.y, len }
 }
 
 function calibrateBottomLeft() {
-  const { dir, len, valid } = getTipAndDirection()
+  const idx = getActiveHandIndex()
+  const { dir, len, valid } = getTipAndDirection(idx)
   if (valid) calibBottomLeft.value = { dx: dir.x, dy: dir.y, len }
 }
 
 function calibrateBottomRight() {
-  const { dir, len, valid } = getTipAndDirection()
+  const idx = getActiveHandIndex()
+  const { dir, len, valid } = getTipAndDirection(idx)
   if (valid) calibBottomRight.value = { dx: dir.x, dy: dir.y, len }
 }
 
@@ -330,6 +313,19 @@ function resetCalibration() {
   calibTopRight.value = null
   calibBottomLeft.value = null
   calibBottomRight.value = null
+}
+
+function getActiveHandIndex(): number {
+  let best = 0
+  let bestLen = -1
+  for (let i = 0; i < Math.min(2, landmarks.value.length); i++) {
+    const r = getTipAndDirection(i)
+    if (r.valid && r.len > bestLen) {
+      bestLen = r.len
+      best = i
+    }
+  }
+  return best
 }
 
 function clamp(v: number, min: number, max: number) { return Math.max(min, Math.min(max, v)) }
