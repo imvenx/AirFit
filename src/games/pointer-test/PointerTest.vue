@@ -30,6 +30,7 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useCamera } from 'src/composables/useCamera'
 import { useHandTracking } from 'src/composables/useHandTracking'
+import { soundPlayer } from 'src/scripts/Audio/SoundPlayer'
 
 const videoRef = ref<HTMLVideoElement | null>(null)
 const screenCanvasRef = ref<HTMLCanvasElement | null>(null)
@@ -214,6 +215,19 @@ function drawDot() {
     if (isFlexed && !wasFlexed[i]) {
       shots.push({ x: fx, y: fy, t: now, hand: i })
       if (shots.length > 100) shots.shift()
+      // Play shooting sound with slight pan based on screen position
+      const pan = (fx / canvas.width) * 2 - 1
+      soundPlayer.play({
+        type: 'square',
+        frequencyStart: 1200,
+        frequencyEnd: 700,
+        frequencyDuration: 0.08,
+        gainStart: 0.2,
+        gainEnd: 0.0001,
+        gainDuration: 0.12,
+        duration: 0.12,
+        pan
+      })
     }
     wasFlexed[i] = isFlexed
   }
