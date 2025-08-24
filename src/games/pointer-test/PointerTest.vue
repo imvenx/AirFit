@@ -36,6 +36,10 @@ const miniCanvasRef = ref<HTMLCanvasElement | null>(null)
 const autoMinLen = ref<number | null>(null)
 const autoMaxLen = ref<number | null>(null)
 const lastDir = ref<{ x: number, y: number }>({ x: 1, y: 0 })
+// Output smoothing
+const filteredPos = ref<{ x: number, y: number } | null>(null)
+const SMOOTH_ALPHA = 0.25 // 0..1; higher = snappier
+const DIR_BETA = 0.3 // smoothing for direction
 // Store calibration as direction vectors + apparent finger length (mirrored-corrected)
 const calibTopLeft = ref<{ dx: number, dy: number, len: number } | null>(null)
 const calibBottomRight = ref<{ dx: number, dy: number, len: number } | null>(null)
@@ -127,8 +131,12 @@ function drawDot() {
     const m = clamp((len - autoMinLen.value) / Math.max(1e-6, autoMaxLen.value - autoMinLen.value), 0, 1)
 
     // 3) Use stable direction; if nearly zero length, keep last direction
-    const dirUse = (len > 1) ? dir : lastDir.value
-    lastDir.value = dir
+    // Smooth direction to reduce jitter
+    let lx = (1 - DIR_BETA) * lastDir.value.x + DIR_BETA * dir.x
+    let ly = (1 - DIR_BETA) * lastDir.value.y + DIR_BETA * dir.y
+    const lnorm = Math.hypot(lx, ly) || 1
+    lastDir.value = { x: lx / lnorm, y: ly / lnorm }
+    const dirUse = lastDir.value
 
     // 4) From screen center, march toward the edge along dirUse scaled by m
     const center = { x: canvas.width * 0.5, y: canvas.height * 0.5 }
@@ -138,11 +146,22 @@ function drawDot() {
     drawY = center.y + m * (edge.y - center.y)
   }
 
+  // Final smoothing on the dot position
+  if (!filteredPos.value) {
+    filteredPos.value = { x: drawX, y: drawY }
+  } else {
+    filteredPos.value.x += SMOOTH_ALPHA * (drawX - filteredPos.value.x)
+    filteredPos.value.y += SMOOTH_ALPHA * (drawY - filteredPos.value.y)
+  }
+
+  const fx = clamp(filteredPos.value.x, 0, canvas.width)
+  const fy = clamp(filteredPos.value.y, 0, canvas.height)
+
   // Draw just a dot/circle at the position
   ctx.save()
   ctx.fillStyle = 'rgba(255, 215, 0, 0.95)'
   ctx.beginPath()
-  ctx.arc(drawX, drawY, 8, 0, Math.PI * 2)
+  ctx.arc(fx, fy, 8, 0, Math.PI * 2)
   ctx.fill()
   ctx.restore()
 }
