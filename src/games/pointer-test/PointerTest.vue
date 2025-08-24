@@ -32,6 +32,10 @@ import { useHandTracking } from 'src/composables/useHandTracking'
 const videoRef = ref<HTMLVideoElement | null>(null)
 const screenCanvasRef = ref<HTMLCanvasElement | null>(null)
 const miniCanvasRef = ref<HTMLCanvasElement | null>(null)
+// Auto-calibration for uncalibrated mode
+const autoMinLen = ref<number | null>(null)
+const autoMaxLen = ref<number | null>(null)
+const lastDir = ref<{ x: number, y: number }>({ x: 1, y: 0 })
 // Store calibration as direction vectors + apparent finger length (mirrored-corrected)
 const calibTopLeft = ref<{ dx: number, dy: number, len: number } | null>(null)
 const calibBottomRight = ref<{ dx: number, dy: number, len: number } | null>(null)
@@ -108,8 +112,30 @@ function drawDot() {
     drawX = canvas.width
     drawY = canvas.height
   } else {
-    // No calibration: do not draw
-    return
+    // No calibration: auto-calibrate based on apparent finger length
+    // 1) Track dynamic min/max length
+    if (autoMinLen.value === null) autoMinLen.value = len
+    if (autoMaxLen.value === null) autoMaxLen.value = len
+    autoMinLen.value = Math.min(autoMinLen.value, len)
+    autoMaxLen.value = Math.max(autoMaxLen.value, len)
+    // Slow relaxation so ranges adapt over time
+    const range = Math.max(1e-3, autoMaxLen.value - autoMinLen.value)
+    autoMinLen.value += 0.001 * range
+    autoMaxLen.value -= 0.001 * range
+
+    // 2) Normalize length to [0,1]
+    const m = clamp((len - autoMinLen.value) / Math.max(1e-6, autoMaxLen.value - autoMinLen.value), 0, 1)
+
+    // 3) Use stable direction; if nearly zero length, keep last direction
+    const dirUse = (len > 1) ? dir : lastDir.value
+    lastDir.value = dir
+
+    // 4) From screen center, march toward the edge along dirUse scaled by m
+    const center = { x: canvas.width * 0.5, y: canvas.height * 0.5 }
+    const edge = intersectRayWithRect(center, dirUse, canvas.width, canvas.height)
+    if (!edge) return
+    drawX = center.x + m * (edge.x - center.x)
+    drawY = center.y + m * (edge.y - center.y)
   }
 
   // Draw just a dot/circle at the position
