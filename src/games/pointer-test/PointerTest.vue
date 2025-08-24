@@ -11,6 +11,8 @@
     <!-- Calibration controls -->
     <div class="calibration-controls">
       <q-btn dense color="primary" class="calib-btn" @click="calibrateTopLeft">Calibrate Top-Left</q-btn>
+      <q-btn dense color="primary" class="calib-btn" @click="calibrateTopRight">Calibrate Top-Right</q-btn>
+      <q-btn dense color="primary" class="calib-btn" @click="calibrateBottomLeft">Calibrate Bottom-Left</q-btn>
       <q-btn dense color="primary" class="calib-btn" @click="calibrateBottomRight">Calibrate Bottom-Right</q-btn>
       <q-btn dense flat color="white" class="calib-btn" @click="resetCalibration">Reset</q-btn>
     </div>
@@ -42,6 +44,8 @@ const SMOOTH_ALPHA = 0.25 // 0..1; higher = snappier
 const DIR_BETA = 0.3 // smoothing for direction
 // Store calibration as direction vectors + apparent finger length (mirrored-corrected)
 const calibTopLeft = ref<{ dx: number, dy: number, len: number } | null>(null)
+const calibTopRight = ref<{ dx: number, dy: number, len: number } | null>(null)
+const calibBottomLeft = ref<{ dx: number, dy: number, len: number } | null>(null)
 const calibBottomRight = ref<{ dx: number, dy: number, len: number } | null>(null)
 const { enableCamera, stopCamera, error } = useCamera(videoRef)
 const { initializeHandTracking, startTracking, stopTracking, landmarks } = useHandTracking(videoRef, screenCanvasRef, 1)
@@ -81,7 +85,44 @@ function drawDot() {
   const { tip, dir, len, valid } = getTipAndDirection()
   if (!valid) return
 
-  if (calibTopLeft.value && calibBottomRight.value) {
+  if (calibTopLeft.value && calibTopRight.value && calibBottomLeft.value && calibBottomRight.value) {
+    // 4-corner calibration: derive per-axis boundaries from corners
+    const tl = calibTopLeft.value
+    const tr = calibTopRight.value
+    const bl = calibBottomLeft.value
+    const br = calibBottomRight.value
+
+    const leftX = (tl.dx + bl.dx) * 0.5
+    const rightX = (tr.dx + br.dx) * 0.5
+    const topY = (tl.dy + tr.dy) * 0.5
+    const bottomY = (bl.dy + br.dy) * 0.5
+
+    // Direction-based normalized pos
+    let sx_dir = 0.5
+    let sy_dir = 0.5
+    const denomX = (rightX - leftX)
+    const denomY = (bottomY - topY)
+    if (Math.abs(denomX) > 1e-6) sx_dir = (dir.x - leftX) / denomX
+    if (Math.abs(denomY) > 1e-6) sy_dir = (dir.y - topY) / denomY
+
+    // Length-based boundaries (average per edge)
+    const leftLen = (tl.len + bl.len) * 0.5
+    const rightLen = (tr.len + br.len) * 0.5
+    const topLen = (tl.len + tr.len) * 0.5
+    const bottomLen = (bl.len + br.len) * 0.5
+    let sx_len = 0.5
+    let sy_len = 0.5
+    const denomLX = (rightLen - leftLen)
+    const denomLY = (bottomLen - topLen)
+    if (Math.abs(denomLX) > 1e-6) sx_len = (len - leftLen) / denomLX
+    if (Math.abs(denomLY) > 1e-6) sy_len = (len - topLen) / denomLY
+
+    const wLen = 0.4
+    const sx = clamp((1 - wLen) * sx_dir + wLen * sx_len, 0, 1)
+    const sy = clamp((1 - wLen) * sy_dir + wLen * sy_len, 0, 1)
+    drawX = sx * canvas.width
+    drawY = sy * canvas.height
+  } else if (calibTopLeft.value && calibBottomRight.value) {
     // Solve per-axis linear map: s = a * d + b with constraints
     // tl -> 0, br -> 1
     const tl = calibTopLeft.value
@@ -269,6 +310,16 @@ function calibrateTopLeft() {
   if (valid) calibTopLeft.value = { dx: dir.x, dy: dir.y, len }
 }
 
+function calibrateTopRight() {
+  const { dir, len, valid } = getTipAndDirection()
+  if (valid) calibTopRight.value = { dx: dir.x, dy: dir.y, len }
+}
+
+function calibrateBottomLeft() {
+  const { dir, len, valid } = getTipAndDirection()
+  if (valid) calibBottomLeft.value = { dx: dir.x, dy: dir.y, len }
+}
+
 function calibrateBottomRight() {
   const { dir, len, valid } = getTipAndDirection()
   if (valid) calibBottomRight.value = { dx: dir.x, dy: dir.y, len }
@@ -276,6 +327,8 @@ function calibrateBottomRight() {
 
 function resetCalibration() {
   calibTopLeft.value = null
+  calibTopRight.value = null
+  calibBottomLeft.value = null
   calibBottomRight.value = null
 }
 
