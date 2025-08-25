@@ -353,10 +353,14 @@ function updateBall(dt: number, canvas: HTMLCanvasElement) {
     ax /= hitCenters.length; ay /= hitCenters.length
     const len = Math.hypot(ax, ay) || 1
     const nx = ax / len, ny = ay / len
-    const speed = Math.hypot(ball.vx, ball.vy) * 1.03 // slight acceleration on hit
-    // Reflect velocity along normal (simple push-away)
-    ball.vx = nx * speed
-    ball.vy = ny * speed
+    // Increase speed slightly but clamp to a safe maximum to avoid runaway velocity
+    const curSpeed = Math.hypot(ball.vx, ball.vy)
+    const baseSpeed = Math.max(160, Math.min(canvas.width, canvas.height) * 0.35)
+    const maxSpeed = baseSpeed * 1.4 // cap at ~40% above base speed
+    const nextSpeed = Math.min(curSpeed * 1.02, maxSpeed)
+    // Reflect velocity along normal (simple push-away) at the clamped speed
+    ball.vx = nx * nextSpeed
+    ball.vy = ny * nextSpeed
     score.value += 1
   }
 }
