@@ -30,6 +30,26 @@ export const gameConfigs: GameConfig[] = [
     showBackButton: true
   },
   {
+    id: 'hdmi-grid-test',
+    name: 'HDMI Grid Test',
+    description: 'Highlight grid cells where your hand maps on the canvas',
+    icon: '🔳',
+    component: 'HdmiGridTest',
+    requiresCamera: true,
+    requiresHandTracking: true,
+    requiresPoseTracking: false,
+    requiresGestureRecognition: false,
+    category: 'utility',
+    difficulty: 'easy',
+    estimatedDuration: 2,
+    isActive: true,
+    devOnly: true,
+    rules: 'Calibrate 4 corners on the camera view, then move your hand to illuminate the corresponding grid cell.',
+    loadingText: 'Setting up camera and hand tracking...',
+    startButtonText: 'Start HDMI Grid Test',
+    showBackButton: true
+  },
+  {
     id: 'hdmi-test',
     name: 'HDMI Test',
     description: 'Calibrate your display and map hand touches onto the canvas',

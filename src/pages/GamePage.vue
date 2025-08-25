@@ -66,7 +66,8 @@ const currentGameComponent = computed(() => {
     'ArucoTest': defineAsyncComponent(() => import('src/games/aruco-test/ArUcoTestSplitScreen.vue')),
     'Test2Aruco2': defineAsyncComponent(() => import('src/games/test2-aruco2/Test2Aruco2.vue')),
     'PointerTest': defineAsyncComponent(() => import('src/games/pointer-test/PointerTest.vue')),
-    'HdmiTest': defineAsyncComponent(() => import('src/games/hdmi-test/HdmiTest.vue'))
+    'HdmiTest': defineAsyncComponent(() => import('src/games/hdmi-test/HdmiTest.vue')),
+    'HdmiGridTest': defineAsyncComponent(() => import('src/games/hdmi-grid-test/HdmiGridTest.vue'))
   }
 
   return componentMap[currentGame.value.component] || null
