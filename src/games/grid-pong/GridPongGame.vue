@@ -13,6 +13,7 @@
         <div class="grid-inputs">
           <q-input dense outlined type="number" min="1" max="100" style="width: 88px" v-model.number="gridCols" label="Cols" />
           <q-input dense outlined type="number" min="1" max="100" style="width: 88px" v-model.number="gridRows" label="Rows" />
+          <q-input dense outlined type="number" min="2" max="40" style="width: 120px" v-model.number="ballCellRadius" label="Ball cells" />
         </div>
         <div class="score">Score: {{ score }}</div>
       </div>
@@ -43,9 +44,11 @@ const miniOverlayRef = ref<HTMLCanvasElement | null>(null)
 const { enableCamera, stopCamera, error } = useCamera(videoRef)
 const { initializeHandTracking, startTracking, stopTracking, landmarks } = useHandTracking(videoRef, miniOverlayRef, 2)
 
-// Grid defaults — fewer cols/rows than HDMI grid test for larger cells
-const gridCols = ref(4)
-const gridRows = ref(3)
+// Grid defaults — higher resolution by default
+const gridCols = ref(200)
+const gridRows = ref(200)
+// Ball size in number of grid cells (radius)
+const ballCellRadius = ref(12)
 
 // Hand highlight tuning (copied from grid test, slightly simplified)
 const sampleDensityFactor = ref(2.0)
@@ -71,6 +74,7 @@ function startCalibration() {
   srcCorners = []
   Hhomo = null
   drawMiniOverlay()
+  saveSettings()
 }
 
 function resetCalibration() {
@@ -79,6 +83,7 @@ function resetCalibration() {
   srcCorners = []
   Hhomo = null
   drawMiniOverlay()
+  saveSettings()
 }
 
 function onMiniOverlayClick(e: MouseEvent) {
@@ -99,6 +104,7 @@ function onMiniOverlayClick(e: MouseEvent) {
     computeHomographyForCurrentCanvas()
   }
   drawMiniOverlay()
+  saveSettings()
 }
 
 function computeHomographyForCurrentCanvas() {
@@ -113,6 +119,7 @@ function computeHomographyForCurrentCanvas() {
     { x: 0, y: Hc }
   ]
   Hhomo = computeHomography(srcCorners, dst)
+  saveSettings()
 }
 
 function applyH(p: Pt): Pt | null {
@@ -171,8 +178,15 @@ function resizeScreenCanvas() {
   if (canvas.height !== h) canvas.height = h
   if (srcCorners.length === 4) computeHomographyForCurrentCanvas()
   // Ball sizing after resize
+  recomputeBallRadius()
+}
+
+function recomputeBallRadius() {
+  const canvas = screenCanvasRef.value
+  if (!canvas) return
   const minCell = Math.min(canvas.width / Math.max(1, gridCols.value), canvas.height / Math.max(1, gridRows.value))
-  ball.r = Math.max(10, Math.round(minCell * 0.6))
+  // Ball radius expressed in cells for consistent pixelated look
+  ball.r = Math.max(8, Math.round(minCell * Math.max(2, Math.min(40, ballCellRadius.value))))
 }
 
 function clampInt(v: number, lo: number, hi: number) { return Math.min(hi, Math.max(lo, v | 0)) }
@@ -439,6 +453,8 @@ onMounted(async () => {
   setTimeout(drawMiniOverlay, 50)
   await initializeHandTracking().catch(() => {})
   await startTracking().catch(() => {})
+  // Load any persisted settings (corners/grid/ball size) and recompute H
+  loadPersistedSettings()
 
   window.addEventListener('resize', () => {
     resizeScreenCanvas()
@@ -461,6 +477,49 @@ watch(landmarks, () => {
   if (!canvas || !ctx) return
   drawGridScene(ctx, canvas)
 })
+
+// Keep ball size updated when grid or ball cell radius changes
+watch([gridCols, gridRows, ballCellRadius], () => {
+  recomputeBallRadius()
+  saveSettings()
+})
+
+// ---- Persistence (localStorage) ----
+const STORAGE_KEY = 'gridPongSettings_v1'
+
+function saveSettings() {
+  try {
+    const payload = {
+      srcCorners,
+      gridCols: gridCols.value,
+      gridRows: gridRows.value,
+      ballCellRadius: ballCellRadius.value
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+  } catch (e) {
+    // ignore
+  }
+}
+
+function loadPersistedSettings() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return
+    const parsed = JSON.parse(raw)
+    if (parsed && Array.isArray(parsed.srcCorners) && parsed.srcCorners.length === 4) {
+      srcCorners = parsed.srcCorners.map((p: any) => ({ x: Number(p.x) || 0, y: Number(p.y) || 0 }))
+      isCalibrating.value = false
+      nextCornerIndex.value = 4
+      computeHomographyForCurrentCanvas()
+      drawMiniOverlay()
+    }
+    if (typeof parsed.gridCols === 'number') gridCols.value = parsed.gridCols
+    if (typeof parsed.gridRows === 'number') gridRows.value = parsed.gridRows
+    if (typeof parsed.ballCellRadius === 'number') ballCellRadius.value = parsed.ballCellRadius
+  } catch (e) {
+    // ignore
+  }
+}
 </script>
 
 <style scoped>
@@ -503,4 +562,3 @@ watch(landmarks, () => {
 .mini-overlay { position: absolute; inset: 0; }
 .calib-instructions { position: absolute; bottom: 6px; left: 6px; color: #fff; background: rgba(0,0,0,0.45); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
 </style>
-
