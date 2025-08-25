@@ -1,6 +1,7 @@
 <template>
   <div class="hdmi-test">
     <canvas ref="screenCanvasRef" class="screen-canvas"></canvas>
+    <canvas ref="markerOverlayRef" class="marker-overlay"></canvas>
 
     <div class="hud">
       <div class="title">HDMI Test</div>
@@ -10,6 +11,15 @@
       <div class="buttons">
         <q-btn dense color="primary" @click="startCalibration">Calibrate Corners</q-btn>
         <q-btn dense flat color="white" @click="resetCalibration">Reset</q-btn>
+        <q-btn dense color="secondary" @click="startAutoCalibration" :disable="autoCalibrating">
+          Auto-Calibrate (ArUco)
+        </q-btn>
+        <q-btn dense color="accent" @click="startAutoCalibrationColor" :disable="autoCalibrating">
+          Auto-Calibrate (Color)
+        </q-btn>
+        <q-btn dense color="positive" @click="startAutoCalibrationGrid" :disable="autoCalibrating">
+          Auto-Calibrate (Grid)
+        </q-btn>
       </div>
     </div>
 
@@ -28,12 +38,19 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useCamera } from 'src/composables/useCamera'
 import { useHandTracking } from 'src/composables/useHandTracking'
+import { ArUcoMarkerGenerator } from 'src/games/aruco-test/ArUcoMarkerGenerator'
+import * as jsAruco from 'js-aruco2/src/aruco.js'
+import * as jsCV from 'js-aruco2/src/cv.js'
+
+const AR = (jsAruco as any).AR || (window as any).AR
+const CV = (jsCV as any).CV || (window as any).CV
 
 type Pt = { x: number, y: number }
 
 const videoRef = ref<HTMLVideoElement | null>(null)
 const screenCanvasRef = ref<HTMLCanvasElement | null>(null)
 const miniOverlayRef = ref<HTMLCanvasElement | null>(null)
+const markerOverlayRef = ref<HTMLCanvasElement | null>(null)
 
 const { enableCamera, stopCamera, error } = useCamera(videoRef)
 const { initializeHandTracking, startTracking, stopTracking, landmarks } = useHandTracking(videoRef, miniOverlayRef, 2)
@@ -48,6 +65,83 @@ let H: number[][] | null = null // homography matrix from video px -> canvas px
 // Smoothed pointer
 let filtered: Pt | null = null
 const SMOOTH_ALPHA = 0.25
+
+// Auto-calibration via ArUco
+const autoCalibrating = ref(false)
+const autoCalMode = ref<'aruco' | 'color' | 'grid' | null>(null)
+let detector: any = null
+let autoCalInterval: number | null = null
+const markerGen = new ArUcoMarkerGenerator()
+
+function startAutoCalibration() {
+  if (autoCalibrating.value) return
+  autoCalibrating.value = true
+  autoCalMode.value = 'aruco'
+  // Reset manual calib
+  srcCorners = []
+  H = null
+  // Prepare detector
+  try {
+    detector = AR && (AR as any).Detector ? new (AR as any).Detector() : null
+  } catch {
+    detector = null
+  }
+  // Poll detection for a short period or until all 4 markers are found
+  let attempts = 0
+  if (autoCalInterval) { clearInterval(autoCalInterval); autoCalInterval = null }
+  autoCalInterval = setInterval(() => {
+    attempts++
+    const ok = tryDetectAndSetHomography()
+    if (ok || attempts > 40) {
+      stopAutoCalibration()
+    }
+  }, 150) as unknown as number
+}
+
+function stopAutoCalibration() {
+  if (autoCalInterval) {
+    clearInterval(autoCalInterval)
+    autoCalInterval = null
+  }
+  autoCalibrating.value = false
+  autoCalMode.value = null
+}
+
+function tryDetectAndSetHomography(): boolean {
+  const video = videoRef.value
+  const canvas = screenCanvasRef.value
+  if (!video || !canvas || !detector) return false
+  if (video.readyState < 2) return false
+  const tmp = document.createElement('canvas')
+  const ctx = tmp.getContext('2d', { willReadFrequently: true })!
+  tmp.width = video.videoWidth
+  tmp.height = video.videoHeight
+  ctx.drawImage(video, 0, 0)
+  const img = ctx.getImageData(0, 0, tmp.width, tmp.height)
+  const markers = detector.detect(img) || []
+  // Collect centers for IDs 0..3
+  const camCenters: Record<number, Pt> = {}
+  for (const m of markers) {
+    if (m.id >= 0 && m.id <= 3 && Array.isArray(m.corners) && m.corners.length >= 4) {
+      const c = m.corners
+      const cx = (c[0].x + c[1].x + c[2].x + c[3].x) / 4
+      const cy = (c[0].y + c[1].y + c[2].y + c[3].y) / 4
+      camCenters[m.id] = { x: cx, y: cy }
+    }
+  }
+  if (camCenters[0] && camCenters[1] && camCenters[2] && camCenters[3]) {
+    // Destination centers on canvas, matching our draw positions
+    const { centers } = getMarkerDrawGeometry()
+    const src = [camCenters[0], camCenters[1], camCenters[2], camCenters[3]]
+    const dst = [centers[0], centers[1], centers[2], centers[3]]
+    const HH = computeHomography(src, dst)
+    if (HH) {
+      H = HH
+      return true
+    }
+  }
+  return false
+}
 
 function startCalibration() {
   isCalibrating.value = true
@@ -153,6 +247,283 @@ function drawMiniOverlay() {
   ctx.restore()
 }
 
+function getMarkerDrawGeometry() {
+  const canvas = screenCanvasRef.value!
+  const W = canvas.width, Hh = canvas.height
+  const inset = Math.round(Math.min(W, Hh) * 0.04)
+  const size = Math.round(Math.min(W, Hh) * 0.14)
+  const rects = [
+    { x: inset, y: inset }, // ID 0 TL
+    { x: W - inset - size, y: inset }, // ID 1 TR
+    { x: W - inset - size, y: Hh - inset - size }, // ID 2 BR
+    { x: inset, y: Hh - inset - size } // ID 3 BL
+  ]
+  const centers = rects.map(r => ({ x: r.x + size / 2, y: r.y + size / 2 }))
+  return { size, rects, centers }
+}
+
+function drawCalibrationMarkers(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
+  const { size, rects } = getMarkerDrawGeometry()
+  for (let id = 0; id < 4; id++) {
+    const r = rects[id]
+    markerGen.drawMarker(ctx, id, r.x, r.y, size)
+  }
+}
+
+function updateMarkersOverlay() {
+  const overlay = markerOverlayRef.value
+  const base = screenCanvasRef.value
+  if (!overlay || !base) return
+  if (overlay.width !== base.width) overlay.width = base.width
+  if (overlay.height !== base.height) overlay.height = base.height
+  const ctx = overlay.getContext('2d')!
+  ctx.clearRect(0, 0, overlay.width, overlay.height)
+  if (autoCalibrating.value) {
+    if (autoCalMode.value === 'aruco') {
+      drawCalibrationMarkers(ctx, overlay)
+    } else if (autoCalMode.value === 'color') {
+      drawColorCalibrationMarkers(ctx, overlay)
+    } else if (autoCalMode.value === 'grid') {
+      drawGridCalibrationOverlay(ctx, overlay)
+    }
+  }
+}
+
+// ---- Color-based auto calibration ----
+function startAutoCalibrationColor() {
+  if (autoCalibrating.value) return
+  autoCalibrating.value = true
+  autoCalMode.value = 'color'
+  srcCorners = []
+  H = null
+  let attempts = 0
+  if (autoCalInterval) { clearInterval(autoCalInterval); autoCalInterval = null }
+  autoCalInterval = setInterval(() => {
+    attempts++
+    const ok = tryDetectColorAndSetHomography()
+    if (ok || attempts > 60) {
+      stopAutoCalibration()
+      updateMarkersOverlay()
+    }
+  }, 120) as unknown as number
+}
+
+function drawColorCalibrationMarkers(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
+  const { size, rects } = getMarkerDrawGeometry()
+  const colors = ['#ff3b30', '#34c759', '#0a84ff', '#ffd60a'] // TL red, TR green, BR blue, BL yellow
+  for (let id = 0; id < 4; id++) {
+    const r = rects[id]
+    ctx.fillStyle = colors[id]
+    ctx.fillRect(r.x, r.y, size, size)
+  }
+}
+
+function tryDetectColorAndSetHomography(): boolean {
+  const video = videoRef.value
+  const canvas = screenCanvasRef.value
+  if (!video || !canvas) return false
+  if (video.readyState < 2) return false
+  const tmp = document.createElement('canvas')
+  const ctx = tmp.getContext('2d', { willReadFrequently: true })!
+  const W = video.videoWidth
+  const Hh = video.videoHeight
+  tmp.width = W
+  tmp.height = Hh
+  ctx.drawImage(video, 0, 0)
+  const img = ctx.getImageData(0, 0, W, Hh)
+
+  const targets: Array<{ h: number, tol: number, sMin: number, vMin: number }> = [
+    { h: 0, tol: 15, sMin: 0.5, vMin: 0.4 },   // red
+    { h: 120, tol: 20, sMin: 0.4, vMin: 0.35 }, // green
+    { h: 210, tol: 25, sMin: 0.4, vMin: 0.35 }, // blue (a bit toward 210 for displays)
+    { h: 55, tol: 20, sMin: 0.4, vMin: 0.5 }    // yellow
+  ]
+
+  const sums = [ {x:0,y:0,c:0}, {x:0,y:0,c:0}, {x:0,y:0,c:0}, {x:0,y:0,c:0} ]
+  const data = img.data
+  const step = 2 // sample every 2px to reduce work
+  for (let y = 0; y < Hh; y += step) {
+    for (let x = 0; x < W; x += step) {
+      const idx = (y * W + x) * 4
+      const r = data[idx] / 255
+      const g = data[idx+1] / 255
+      const b = data[idx+2] / 255
+      const [hh, ss, vv] = rgbToHsv(r, g, b)
+      for (let k = 0; k < 4; k++) {
+        const t = targets[k]
+        if (vv < t.vMin || ss < t.sMin) continue
+        if (hueMatches(hh, t.h, t.tol)) {
+          sums[k].x += x
+          sums[k].y += y
+          sums[k].c += 1
+        }
+      }
+    }
+  }
+
+  const centers: Array<Pt | null> = sums.map(s => s.c > 50 ? { x: s.x / s.c, y: s.y / s.c } : null)
+  if (centers.every(c => !!c)) {
+    // Map TL, TR, BR, BL order to the same as drawColorCalibrationMarkers
+    const { centers: dstCenters } = getMarkerDrawGeometry()
+    const src = [centers[0]!, centers[1]!, centers[2]!, centers[3]!]
+    const dst = [dstCenters[0], dstCenters[1], dstCenters[2], dstCenters[3]]
+    const HH = computeHomography(src, dst)
+    if (HH) { H = HH; return true }
+  }
+  return false
+}
+
+function rgbToHsv(r: number, g: number, b: number): [number, number, number] {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b)
+  let h = 0, s = 0, v = max
+  const d = max - min
+  s = max === 0 ? 0 : d / max
+  if (d !== 0) {
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break
+      case g: h = (b - r) / d + 2; break
+      case b: h = (r - g) / d + 4; break
+    }
+    h *= 60
+  }
+  return [h, s, v]
+}
+
+function hueMatches(h: number, target: number, tol: number): boolean {
+  // handle wrap-around for red
+  const a = (h - target + 360) % 360
+  const b = (target - h + 360) % 360
+  return Math.min(a, b) <= tol
+}
+
+// ---- Grid-based auto calibration ----
+function startAutoCalibrationGrid() {
+  if (autoCalibrating.value) return
+  autoCalibrating.value = true
+  autoCalMode.value = 'grid'
+  srcCorners = []
+  H = null
+  let attempts = 0
+  if (autoCalInterval) { clearInterval(autoCalInterval); autoCalInterval = null }
+  autoCalInterval = setInterval(() => {
+    attempts++
+    const ok = tryDetectGridAndSetHomography()
+    if (ok || attempts > 80) {
+      stopAutoCalibration()
+      updateMarkersOverlay()
+    }
+  }, 120) as unknown as number
+}
+
+function drawGridCalibrationOverlay(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
+  const W = canvas.width, Hh = canvas.height
+  ctx.save()
+  ctx.fillStyle = '#000'
+  ctx.fillRect(0, 0, W, Hh)
+  // Thick border for easy detection
+  ctx.strokeStyle = '#fff'
+  ctx.lineWidth = Math.max(6, Math.floor(Math.min(W, Hh) * 0.01))
+  ctx.strokeRect(0, 0, W, Hh)
+  // Inner grid thin lines
+  ctx.lineWidth = Math.max(2, Math.floor(Math.min(W, Hh) * 0.003))
+  const cols = 8, rows = 5
+  for (let c = 1; c < cols; c++) {
+    const x = Math.round((c / cols) * W)
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, Hh); ctx.stroke()
+  }
+  for (let r = 1; r < rows; r++) {
+    const y = Math.round((r / rows) * Hh)
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke()
+  }
+  ctx.restore()
+}
+
+function tryDetectGridAndSetHomography(): boolean {
+  const video = videoRef.value
+  const canvas = screenCanvasRef.value
+  if (!video || !canvas) return false
+  if (video.readyState < 2) return false
+  const Wc = video.videoWidth
+  const Hc = video.videoHeight
+  if (Wc < 2 || Hc < 2) return false
+  const tmp = document.createElement('canvas')
+  const ctx = tmp.getContext('2d', { willReadFrequently: true })!
+  tmp.width = Wc; tmp.height = Hc
+  ctx.drawImage(video, 0, 0)
+  const img = ctx.getImageData(0, 0, Wc, Hc)
+  // Grayscale vertical and horizontal projections
+  const data = img.data
+  const vproj = new Float32Array(Wc)
+  const hproj = new Float32Array(Hc)
+  for (let y = 0; y < Hc; y++) {
+    let rowSum = 0
+    for (let x = 0; x < Wc; x++) {
+      const idx = (y * Wc + x) * 4
+      const r = data[idx], g = data[idx+1], b = data[idx+2]
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b
+      rowSum += gray
+      vproj[x] += gray
+    }
+    hproj[y] = rowSum
+  }
+  // Smooth with simple box filter
+  smoothArrayInPlace(vproj, Math.max(3, Math.floor(Wc * 0.01)))
+  smoothArrayInPlace(hproj, Math.max(3, Math.floor(Hc * 0.01)))
+  // Thresholds: relative to max
+  const vmax = vproj.reduce((a, b) => Math.max(a, b), 0)
+  const hmax = hproj.reduce((a, b) => Math.max(a, b), 0)
+  if (vmax < 1 || hmax < 1) return false
+  const vthr = vmax * 0.6
+  const hthr = hmax * 0.6
+  const xL = findEdgeFromStart(vproj, vthr)
+  const xR = findEdgeFromEnd(vproj, vthr)
+  const yT = findEdgeFromStart(hproj, hthr)
+  const yB = findEdgeFromEnd(hproj, hthr)
+  if (xL === null || xR === null || yT === null || yB === null) return false
+  if (xR - xL < Wc * 0.2 || yB - yT < Hc * 0.2) return false
+  const src = [ {x:xL,y:yT}, {x:xR,y:yT}, {x:xR,y:yB}, {x:xL,y:yB} ]
+  const dst = [ {x:0,y:0}, {x:canvas.width,y:0}, {x:canvas.width,y:canvas.height}, {x:0,y:canvas.height} ]
+  const HH = computeHomography(src, dst)
+  if (HH) { H = HH; return true }
+  return false
+}
+
+function smoothArrayInPlace(a: Float32Array, radius: number) {
+  const n = a.length
+  if (n === 0) return
+  const r = Math.max(1, Math.min(radius, Math.floor(n/10)))
+  const out = new Float32Array(n)
+  let acc = 0
+  for (let i = 0; i < n + r; i++) {
+    const add = i < n ? a[i] : 0
+    const rem = i - r - 1 >= 0 ? a[i - r - 1] : 0
+    acc += add - rem
+    if (i >= r) out[i - r] = acc / (Math.min(i + 1, n) - Math.max(0, i - r))
+  }
+  a.set(out)
+}
+
+function findEdgeFromStart(arr: Float32Array, thr: number): number | null {
+  for (let i = 0; i < arr.length; i++) if (arr[i] >= thr) {
+    // refine to local centroid over contiguous above-threshold region
+    let j = i
+    let sum = 0, wsum = 0
+    while (j < arr.length && arr[j] >= thr) { sum += arr[j]; wsum += arr[j] * j; j++ }
+    return Math.round(wsum / Math.max(1, sum))
+  }
+  return null
+}
+
+function findEdgeFromEnd(arr: Float32Array, thr: number): number | null {
+  for (let i = arr.length - 1; i >= 0; i--) if (arr[i] >= thr) {
+    let j = i
+    let sum = 0, wsum = 0
+    while (j >= 0 && arr[j] >= thr) { sum += arr[j]; wsum += arr[j] * j; j-- }
+    return Math.round(wsum / Math.max(1, sum))
+  }
+  return null
+}
+
 function resizeScreenCanvas() {
   const canvas = screenCanvasRef.value
   if (!canvas) return
@@ -169,6 +540,8 @@ function drawMain() {
   const ctx = canvas?.getContext('2d')
   if (!canvas || !ctx) return
   ctx.clearRect(0, 0, canvas.width, canvas.height)
+  // Draw markers in overlay above HUD
+  updateMarkersOverlay()
   if (filtered) {
     ctx.save()
     ctx.fillStyle = 'rgba(255, 215, 0, 0.95)'
@@ -246,6 +619,12 @@ onMounted(async () => {
   window.addEventListener('resize', () => {
     resizeScreenCanvas()
     drawMiniOverlay()
+    // If window changed, any calibration will be off; require recalibration
+    if (!autoCalibrating.value) {
+      // keep it simple: clear H to avoid false mapping after resize
+      H = null
+    }
+    updateMarkersOverlay()
   })
 })
 
@@ -286,6 +665,14 @@ watch(landmarks, () => {
   position: absolute;
   top: 0; left: 0;
   width: 100%; height: 100%;
+}
+
+.marker-overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 2000;
 }
 
 .hud {
