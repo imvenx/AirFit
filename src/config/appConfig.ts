@@ -30,6 +30,26 @@ export const gameConfigs: GameConfig[] = [
     showBackButton: true
   },
   {
+    id: 'pong-test',
+    name: 'Pong Test',
+    description: 'Play Pong using your hands as paddles.',
+    icon: '🏓',
+    component: 'PongTest',
+    requiresCamera: true,
+    requiresHandTracking: true,
+    requiresPoseTracking: false,
+    requiresGestureRecognition: false,
+    category: 'utility',
+    difficulty: 'easy',
+    estimatedDuration: 3,
+    isActive: true,
+    devOnly: true,
+    rules: 'Stand in view. Move your hands up/down on each side to control paddles. One or two players supported.',
+    loadingText: 'Setting up camera and hand tracking...',
+    startButtonText: 'Start Pong',
+    showBackButton: true
+  },
+  {
     id: 'hdmi-grid-test',
     name: 'HDMI Grid Test',
     description: 'Highlight grid cells where your hand maps on the canvas',
