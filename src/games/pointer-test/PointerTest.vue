@@ -5,7 +5,7 @@
     <div class="content">
       <div class="icon">🖱️</div>
       <h2>Pointer Test</h2>
-      <p>Point at the screen — we\'ll estimate a dot.</p>
+      <p>Aim with left hand; shoot by pinching right hand.</p>
     </div>
 
     <!-- Calibration controls -->
@@ -15,6 +15,7 @@
       <q-btn dense color="primary" class="calib-btn" @click="calibrateBottomLeft">Calibrate Bottom-Left</q-btn>
       <q-btn dense color="primary" class="calib-btn" @click="calibrateBottomRight">Calibrate Bottom-Right</q-btn>
       <q-btn dense flat color="white" class="calib-btn" @click="resetCalibration">Reset</q-btn>
+      <q-btn dense flat color="white" class="calib-btn" @click="toggleHandRoles">Switch Hands</q-btn>
     </div>
 
     <!-- Debug camera (mirrored). No drawings on it. -->
@@ -47,19 +48,21 @@ const filteredPos: Array<{ x: number, y: number } | null> = [null, null]
 // Pinch-to-shoot state
 type Shot = { x: number, y: number, t: number, hand: number }
 let shots: Shot[] = []
-const wasFlexed: boolean[] = [false, false]
+const wasPinching: boolean[] = [false, false]
 const PINCH_LIFETIME = 1500 // ms
-// Simple vertical threshold: thumb middle (3) must be higher than thumb tip (4) by this many px
-const FLEX_Y_THRESH = 6
+const PINCH_DIST_PX = 28 // distance threshold between index tip (8) and thumb tip (4)
 const SMOOTH_ALPHA = 0.25 // 0..1; higher = snappier
 const DIR_BETA = 0.3 // smoothing for direction
+// Role selection: by default Aim with Left, Shoot with Right. Toggle to swap.
+const swappedRoles = ref(false)
+function toggleHandRoles() { swappedRoles.value = !swappedRoles.value }
 // Store calibration as direction vectors + apparent finger length (mirrored-corrected)
 const calibTopLeft = ref<{ dx: number, dy: number, len: number } | null>(null)
 const calibTopRight = ref<{ dx: number, dy: number, len: number } | null>(null)
 const calibBottomLeft = ref<{ dx: number, dy: number, len: number } | null>(null)
 const calibBottomRight = ref<{ dx: number, dy: number, len: number } | null>(null)
 const { enableCamera, stopCamera, error } = useCamera(videoRef)
-const { initializeHandTracking, startTracking, stopTracking, landmarks } = useHandTracking(videoRef, screenCanvasRef, 2)
+const { initializeHandTracking, startTracking, stopTracking, landmarks, handednesses } = useHandTracking(videoRef, screenCanvasRef, 2)
 
 function resizeScreenCanvas() {
   const canvas = screenCanvasRef.value
@@ -106,115 +109,120 @@ function drawDot() {
 
   if (!hands || hands.length === 0) return
 
-  for (let i = 0; i < Math.min(hands.length, 2); i++) {
-    let drawX = 0
-    let drawY = 0
-    const { tip, dir, len, valid } = getTipAndDirection(i)
-    if (!valid) continue
+  const { aimIndex, shootIndex } = getAimShootIndices()
+  if (aimIndex === null) return
 
-    if (calibTopLeft.value && calibTopRight.value && calibBottomLeft.value && calibBottomRight.value) {
-      const tl = calibTopLeft.value
-      const tr = calibTopRight.value
-      const bl = calibBottomLeft.value
-      const br = calibBottomRight.value
+  // Compute aim cursor from the aiming hand only
+  let drawX = 0
+  let drawY = 0
+  const { dir, len, valid } = getTipAndDirection(aimIndex)
+  if (!valid) return
 
-      const leftX = (tl.dx + bl.dx) * 0.5
-      const rightX = (tr.dx + br.dx) * 0.5
-      const topY = (tl.dy + tr.dy) * 0.5
-      const bottomY = (bl.dy + br.dy) * 0.5
+  if (calibTopLeft.value && calibTopRight.value && calibBottomLeft.value && calibBottomRight.value) {
+    const tl = calibTopLeft.value!
+    const tr = calibTopRight.value!
+    const bl = calibBottomLeft.value!
+    const br = calibBottomRight.value!
 
-      let sx_dir = 0.5
-      let sy_dir = 0.5
-      const denomX = (rightX - leftX)
-      const denomY = (bottomY - topY)
-      if (Math.abs(denomX) > 1e-6) sx_dir = (dir.x - leftX) / denomX
-      if (Math.abs(denomY) > 1e-6) sy_dir = (dir.y - topY) / denomY
+    const leftX = (tl.dx + bl.dx) * 0.5
+    const rightX = (tr.dx + br.dx) * 0.5
+    const topY = (tl.dy + tr.dy) * 0.5
+    const bottomY = (bl.dy + br.dy) * 0.5
 
-      const leftLen = (tl.len + bl.len) * 0.5
-      const rightLen = (tr.len + br.len) * 0.5
-      const topLen = (tl.len + tr.len) * 0.5
-      const bottomLen = (bl.len + br.len) * 0.5
-      let sx_len = 0.5
-      let sy_len = 0.5
-      const denomLX = (rightLen - leftLen)
-      const denomLY = (bottomLen - topLen)
-      if (Math.abs(denomLX) > 1e-6) sx_len = (len - leftLen) / denomLX
-      if (Math.abs(denomLY) > 1e-6) sy_len = (len - topLen) / denomLY
+    let sx_dir = 0.5
+    let sy_dir = 0.5
+    const denomX = (rightX - leftX)
+    const denomY = (bottomY - topY)
+    if (Math.abs(denomX) > 1e-6) sx_dir = (dir.x - leftX) / denomX
+    if (Math.abs(denomY) > 1e-6) sy_dir = (dir.y - topY) / denomY
 
-      const wLen = 0.4
-      const sx = clamp((1 - wLen) * sx_dir + wLen * sx_len, 0, 1)
-      const sy = clamp((1 - wLen) * sy_dir + wLen * sy_len, 0, 1)
-      drawX = sx * canvas.width
-      drawY = sy * canvas.height
-    } else if (calibTopLeft.value && calibBottomRight.value) {
-      const tl = calibTopLeft.value
-      const br = calibBottomRight.value
-      const denomX = (br.dx - tl.dx)
-      const denomY = (br.dy - tl.dy)
-      const denomL = (br.len - tl.len)
-      let sx_dir = 0.5
-      let sy_dir = 0.5
-      if (Math.abs(denomX) > 1e-6) sx_dir = (dir.x - tl.dx) / denomX
-      if (Math.abs(denomY) > 1e-6) sy_dir = (dir.y - tl.dy) / denomY
-      let s_len = 0.5
-      if (Math.abs(denomL) > 1e-6) s_len = (len - tl.len) / denomL
-      const wLen = 0.5
-      let sx = clamp((1 - wLen) * sx_dir + wLen * s_len, 0, 1)
-      let sy = clamp((1 - wLen) * sy_dir + wLen * s_len, 0, 1)
-      drawX = sx * canvas.width
-      drawY = sy * canvas.height
-    } else if (calibTopLeft.value && !calibBottomRight.value) {
-      drawX = 0
-      drawY = 0
-    } else if (!calibTopLeft.value && calibBottomRight.value) {
-      drawX = canvas.width
-      drawY = canvas.height
-    } else {
-      if (autoMinLen[i] === null) autoMinLen[i] = len
-      if (autoMaxLen[i] === null) autoMaxLen[i] = len
-      autoMinLen[i] = Math.min(autoMinLen[i] as number, len)
-      autoMaxLen[i] = Math.max(autoMaxLen[i] as number, len)
-      const range = Math.max(1e-3, (autoMaxLen[i] as number) - (autoMinLen[i] as number))
-      autoMinLen[i] = (autoMinLen[i] as number) + 0.001 * range
-      autoMaxLen[i] = (autoMaxLen[i] as number) - 0.001 * range
+    const leftLen = (tl.len + bl.len) * 0.5
+    const rightLen = (tr.len + br.len) * 0.5
+    const topLen = (tl.len + tr.len) * 0.5
+    const bottomLen = (bl.len + br.len) * 0.5
+    let sx_len = 0.5
+    let sy_len = 0.5
+    const denomLX = (rightLen - leftLen)
+    const denomLY = (bottomLen - topLen)
+    if (Math.abs(denomLX) > 1e-6) sx_len = (len - leftLen) / denomLX
+    if (Math.abs(denomLY) > 1e-6) sy_len = (len - topLen) / denomLY
 
-      const m = clamp((len - (autoMinLen[i] as number)) / Math.max(1e-6, (autoMaxLen[i] as number) - (autoMinLen[i] as number)), 0, 1)
+    const wLen = 0.4
+    const sx = clamp((1 - wLen) * sx_dir + wLen * sx_len, 0, 1)
+    const sy = clamp((1 - wLen) * sy_dir + wLen * sy_len, 0, 1)
+    drawX = sx * canvas.width
+    drawY = sy * canvas.height
+  } else if (calibTopLeft.value && calibBottomRight.value) {
+    const tl = calibTopLeft.value!
+    const br = calibBottomRight.value!
+    const denomX = (br.dx - tl.dx)
+    const denomY = (br.dy - tl.dy)
+    const denomL = (br.len - tl.len)
+    let sx_dir = 0.5
+    let sy_dir = 0.5
+    if (Math.abs(denomX) > 1e-6) sx_dir = (dir.x - tl.dx) / denomX
+    if (Math.abs(denomY) > 1e-6) sy_dir = (dir.y - tl.dy) / denomY
+    let s_len = 0.5
+    if (Math.abs(denomL) > 1e-6) s_len = (len - tl.len) / denomL
+    const wLen = 0.5
+    let sx = clamp((1 - wLen) * sx_dir + wLen * s_len, 0, 1)
+    let sy = clamp((1 - wLen) * sy_dir + wLen * s_len, 0, 1)
+    drawX = sx * canvas.width
+    drawY = sy * canvas.height
+  } else if (calibTopLeft.value && !calibBottomRight.value) {
+    drawX = 0
+    drawY = 0
+  } else if (!calibTopLeft.value && calibBottomRight.value) {
+    drawX = canvas.width
+    drawY = canvas.height
+  } else {
+    if (autoMinLen[aimIndex] === null) autoMinLen[aimIndex] = len
+    if (autoMaxLen[aimIndex] === null) autoMaxLen[aimIndex] = len
+    autoMinLen[aimIndex] = Math.min(autoMinLen[aimIndex] as number, len)
+    autoMaxLen[aimIndex] = Math.max(autoMaxLen[aimIndex] as number, len)
+    const range = Math.max(1e-3, (autoMaxLen[aimIndex] as number) - (autoMinLen[aimIndex] as number))
+    autoMinLen[aimIndex] = (autoMinLen[aimIndex] as number) + 0.001 * range
+    autoMaxLen[aimIndex] = (autoMaxLen[aimIndex] as number) - 0.001 * range
 
-      let lx = (1 - DIR_BETA) * lastDir[i].x + DIR_BETA * dir.x
-      let ly = (1 - DIR_BETA) * lastDir[i].y + DIR_BETA * dir.y
-      const lnorm = Math.hypot(lx, ly) || 1
-      lastDir[i] = { x: lx / lnorm, y: ly / lnorm }
-      const dirUse = lastDir[i]
+    const m = clamp((len - (autoMinLen[aimIndex] as number)) / Math.max(1e-6, (autoMaxLen[aimIndex] as number) - (autoMinLen[aimIndex] as number)), 0, 1)
 
-      const center = { x: canvas.width * 0.5, y: canvas.height * 0.5 }
-      const edge = intersectRayWithRect(center, dirUse, canvas.width, canvas.height)
-      if (!edge) continue
+    let lx = (1 - DIR_BETA) * lastDir[aimIndex].x + DIR_BETA * dir.x
+    let ly = (1 - DIR_BETA) * lastDir[aimIndex].y + DIR_BETA * dir.y
+    const lnorm = Math.hypot(lx, ly) || 1
+    lastDir[aimIndex] = { x: lx / lnorm, y: ly / lnorm }
+    const dirUse = lastDir[aimIndex]
+
+    const center = { x: canvas.width * 0.5, y: canvas.height * 0.5 }
+    const edge = intersectRayWithRect(center, dirUse, canvas.width, canvas.height)
+    if (edge) {
       drawX = center.x + m * (edge.x - center.x)
       drawY = center.y + m * (edge.y - center.y)
     }
+  }
 
-    if (!filteredPos[i]) {
-      filteredPos[i] = { x: drawX, y: drawY }
-    } else {
-      filteredPos[i]!.x += SMOOTH_ALPHA * (drawX - filteredPos[i]!.x)
-      filteredPos[i]!.y += SMOOTH_ALPHA * (drawY - filteredPos[i]!.y)
-    }
-    const fx = clamp(filteredPos[i]!.x, 0, canvas.width)
-    const fy = clamp(filteredPos[i]!.y, 0, canvas.height)
+  if (!filteredPos[aimIndex]) {
+    filteredPos[aimIndex] = { x: drawX, y: drawY }
+  } else {
+    filteredPos[aimIndex]!.x += SMOOTH_ALPHA * (drawX - filteredPos[aimIndex]!.x)
+    filteredPos[aimIndex]!.y += SMOOTH_ALPHA * (drawY - filteredPos[aimIndex]!.y)
+  }
+  const fx = clamp(filteredPos[aimIndex]!.x, 0, canvas.width)
+  const fy = clamp(filteredPos[aimIndex]!.y, 0, canvas.height)
 
-    ctx.save()
-    ctx.fillStyle = i === 0 ? 'rgba(255, 215, 0, 0.95)' : 'rgba(0, 200, 255, 0.95)'
-    ctx.beginPath()
-    ctx.arc(fx, fy, 8, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.restore()
+  // Draw aim cursor
+  ctx.save()
+  ctx.fillStyle = 'rgba(255, 215, 0, 0.95)'
+  ctx.beginPath()
+  ctx.arc(fx, fy, 8, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
 
-    // Thumb-flex shoot: when thumb middle (3) is above thumb tip (4)
-    const isFlexed = isThumbFlexed(i)
-    if (isFlexed && !wasFlexed[i]) {
-      shots.push({ x: fx, y: fy, t: now, hand: i })
+  // Check pinch on shooting hand; shoot at the aim position
+  if (shootIndex !== null) {
+    const pinching = isPinching(shootIndex)
+    if (pinching && !wasPinching[shootIndex]) {
+      shots.push({ x: fx, y: fy, t: now, hand: shootIndex })
       if (shots.length > 100) shots.shift()
-      // Play shooting sound with slight pan based on screen position
       const pan = (fx / canvas.width) * 2 - 1
       soundPlayer.play({
         type: 'square',
@@ -228,7 +236,7 @@ function drawDot() {
         pan
       })
     }
-    wasFlexed[i] = isFlexed
+    wasPinching[shootIndex] = pinching
   }
 }
 
@@ -272,15 +280,41 @@ function intersectRayWithRect(origin: { x: number, y: number }, dir: { x: number
   return { x: candidates[0].x, y: candidates[0].y }
 }
 
-function isThumbFlexed(handIndex: number): boolean {
+function isPinching(handIndex: number): boolean {
   const canvas = screenCanvasRef.value
   const hands = landmarks.value
   if (!canvas || !hands || !hands[handIndex]) return false
   const lm = hands[handIndex]
-  const tip = { x: lm[4].x * canvas.width, y: lm[4].y * canvas.height } // thumb tip
-  const mid = { x: lm[3].x * canvas.width, y: lm[3].y * canvas.height } // thumb middle (IP)
-  // In canvas coordinates, smaller y is higher. Flexed when middle is higher than tip by a margin.
-  return (mid.y + FLEX_Y_THRESH) < tip.y
+  const idx = { x: lm[8].x * canvas.width, y: lm[8].y * canvas.height } // index tip
+  const th = { x: lm[4].x * canvas.width, y: lm[4].y * canvas.height } // thumb tip
+  const d = Math.hypot(idx.x - th.x, idx.y - th.y)
+  return d <= PINCH_DIST_PX
+}
+
+function getAimShootIndices(): { aimIndex: number | null, shootIndex: number | null } {
+  const hands = landmarks.value
+  if (!hands || hands.length === 0) return { aimIndex: null, shootIndex: null }
+  // Try MediaPipe handedness if available; fallback to x-ordering in image space
+  let leftIndex: number | null = null
+  let rightIndex: number | null = null
+  if (handednesses?.value && handednesses.value.length === hands.length) {
+    handednesses.value.forEach((label, i) => {
+      const L = (label || '').toLowerCase()
+      if (L.includes('left')) leftIndex = i
+      if (L.includes('right')) rightIndex = i
+    })
+  }
+  if (leftIndex === null || rightIndex === null) {
+    const xs = hands.map((lm, i) => ({ i, x: lm[0].x }))
+    xs.sort((a, b) => a.x - b.x)
+    if (xs.length >= 1) leftIndex = xs[0].i
+    if (xs.length >= 2) rightIndex = xs[xs.length - 1].i
+  }
+  if (!swappedRoles.value) {
+    return { aimIndex: leftIndex, shootIndex: rightIndex }
+  } else {
+    return { aimIndex: rightIndex, shootIndex: leftIndex }
+  }
 }
 
 function drawMiniHandOverlay() {

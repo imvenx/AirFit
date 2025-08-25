@@ -11,6 +11,8 @@ export function useHandTracking(
   const isTracking = ref(false)
   const landmarks = ref<NormalizedLandmark[][]>([])
   const error = ref<string | null>(null)
+  // Handedness per detected hand ("Left" | "Right") if available
+  const handednesses = ref<Array<string>>([])
 
   let handLandmarker: HandLandmarker | null = null
   let canvasCtx: CanvasRenderingContext2D | null = null
@@ -82,6 +84,25 @@ export function useHandTracking(
 
   function processResults(results: HandLandmarkerResult) {
     landmarks.value = results.landmarks || []
+    // Extract handedness labels if provided by MediaPipe
+    try {
+      const hs: Array<string> = []
+      // results.handednesses is an array of arrays of classifications; take the top label
+      // Types differ across versions; use optional chaining defensively.
+      const raw: any = (results as any).handednesses
+      if (Array.isArray(raw)) {
+        for (const arr of raw) {
+          if (Array.isArray(arr) && arr.length > 0) {
+            const first = arr[0]
+            const label = first?.displayName || first?.categoryName || first?.label
+            if (typeof label === 'string') hs.push(label)
+          }
+        }
+      }
+      handednesses.value = hs
+    } catch {
+      handednesses.value = []
+    }
   }
 
   // Get fingertip landmarks for game interaction
@@ -99,6 +120,7 @@ export function useHandTracking(
     isInitialized,
     isTracking,
     landmarks,
+    handednesses,
     error,
     initializeHandTracking,
     startTracking,
