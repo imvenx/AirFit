@@ -212,52 +212,75 @@ function drawGridAndHighlight() {
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke()
   }
   
-  // Highlight all cells overlapped by hand bounding box
-  const rect = currentHandCanvasBounds()
-  if (rect) {
-    const c0 = clampInt(Math.floor(rect.x / cellW), 0, cols - 1)
-    const r0 = clampInt(Math.floor(rect.y / cellH), 0, rows - 1)
-    const c1 = clampInt(Math.floor((rect.x + rect.w) / cellW), 0, cols - 1)
-    const r1 = clampInt(Math.floor((rect.y + rect.h) / cellH), 0, rows - 1)
+  // Highlight cells under fingers along wrist->tip paths
+  const active = computeActiveCells(cols, rows, cellW, cellH)
+  if (active.size > 0) {
     ctx.fillStyle = 'rgba(255, 215, 0, 0.35)'
-    for (let r = r0; r <= r1; r++) {
-      for (let c = c0; c <= c1; c++) {
-        ctx.fillRect(c * cellW, r * cellH, cellW, cellH)
-      }
+    for (const key of active) {
+      const [cStr, rStr] = key.split(',')
+      const c = parseInt(cStr, 10)
+      const r = parseInt(rStr, 10)
+      ctx.fillRect(c * cellW, r * cellH, cellW, cellH)
     }
   }
   ctx.restore()
+}
+
+function computeActiveCells(cols: number, rows: number, cellW: number, cellH: number): Set<string> {
+  const active = new Set<string>()
+  const video = videoRef.value
+  if (!video || !H) return active
+  const hands = landmarks.value
+  if (!hands || hands.length === 0) return active
+  const lm = hands[0]
+  // Landmark indices
+  const WRIST = 0
+  const TIPS = [4, 8, 12, 16, 20]
+  const wristCam = { x: lm[WRIST].x * video.videoWidth, y: lm[WRIST].y * video.videoHeight }
+  const wrist = applyH(wristCam)
+  if (!wrist) return active
+  const baseRadiusPx = 0.35 * Math.min(cellW, cellH)
+  for (const tipIdx of TIPS) {
+    const tipCam = { x: lm[tipIdx].x * video.videoWidth, y: lm[tipIdx].y * video.videoHeight }
+    const tip = applyH(tipCam)
+    if (!tip) continue
+    const dx = tip.x - wrist.x
+    const dy = tip.y - wrist.y
+    const L = Math.hypot(dx, dy)
+    const samples = clampInt(Math.round((L / Math.min(cellW, cellH)) * 2.0) + 2, 3, 30)
+    const radius = clampFloat(L * 0.08, baseRadiusPx * 0.6, baseRadiusPx * 1.8)
+    for (let s = 0; s < samples; s++) {
+      const t = 0.35 + (s / (samples - 1)) * 0.65 // avoid near-wrist region
+      const cx = wrist.x + t * dx
+      const cy = wrist.y + t * dy
+      stampCircleCells(active, cx, cy, radius, cols, rows, cellW, cellH)
+    }
+  }
+  return active
+}
+
+function stampCircleCells(active: Set<string>, cx: number, cy: number, r: number, cols: number, rows: number, cellW: number, cellH: number) {
+  const c0 = clampInt(Math.floor((cx - r) / cellW), 0, cols - 1)
+  const r0 = clampInt(Math.floor((cy - r) / cellH), 0, rows - 1)
+  const c1 = clampInt(Math.floor((cx + r) / cellW), 0, cols - 1)
+  const r1 = clampInt(Math.floor((cy + r) / cellH), 0, rows - 1)
+  const r2 = r * r
+  for (let rix = r0; rix <= r1; rix++) {
+    const cyc = (rix + 0.5) * cellH
+    for (let cix = c0; cix <= c1; cix++) {
+      const cxc = (cix + 0.5) * cellW
+      const d2 = (cxc - cx) * (cxc - cx) + (cyc - cy) * (cyc - cy)
+      if (d2 <= r2) active.add(`${cix},${rix}`)
+    }
+  }
 }
 
 function clampInt(v: number, lo: number, hi: number) {
   return Math.min(hi, Math.max(lo, v | 0))
 }
 
-function currentHandCanvasBounds(): { x: number, y: number, w: number, h: number } | null {
-  const video = videoRef.value
-  if (!video || !H) return null
-  const hands = landmarks.value
-  if (!hands || hands.length === 0) return null
-  // For now, take the first hand; could union multiple hands later
-  const lm = hands[0]
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-  for (let i = 0; i < lm.length; i++) {
-    const px = lm[i].x * video.videoWidth
-    const py = lm[i].y * video.videoHeight
-    const mapped = applyH({ x: px, y: py })
-    if (!mapped) continue
-    if (mapped.x < minX) minX = mapped.x
-    if (mapped.y < minY) minY = mapped.y
-    if (mapped.x > maxX) maxX = mapped.x
-    if (mapped.y > maxY) maxY = mapped.y
-  }
-  if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) return null
-  const x = Math.max(0, minX)
-  const y = Math.max(0, minY)
-  const w = Math.max(0, maxX - x)
-  const h = Math.max(0, maxY - y)
-  if (w < 2 && h < 2) return null
-  return { x, y, w, h }
+function clampFloat(v: number, lo: number, hi: number) {
+  return Math.min(hi, Math.max(lo, v))
 }
 
 function getMarkerDrawGeometry() {
@@ -574,7 +597,7 @@ function drawGridCalibrationOverlay(ctx: CanvasRenderingContext2D, canvas: HTMLC
   ctx.lineWidth = Math.max(6, Math.floor(Math.min(W, Hh) * 0.01))
   ctx.strokeRect(0, 0, W, Hh)
   ctx.lineWidth = Math.max(2, Math.floor(Math.min(W, Hh) * 0.003))
-  const cols = GRID_COLS, rows = GRID_ROWS
+  const cols = Math.max(1, gridCols.value), rows = Math.max(1, gridRows.value)
   for (let c = 1; c < cols; c++) {
     const x = Math.round((c / cols) * W)
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, Hh); ctx.stroke()
