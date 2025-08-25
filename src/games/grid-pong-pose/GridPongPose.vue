@@ -70,6 +70,11 @@ const score = ref(0)
 let ball = { x: 0, y: 0, vx: 0, vy: 0, r: 0 } // r in px
 let rafId: number | null = null
 let lastTs = 0
+// For physics: track previous pose hand centers to derive hand velocity
+let prevCenters: Pt[] = []
+let prevCentersTime = 0
+// Simple cooldown to avoid rapid re-collisions while still overlapping
+let collisionCooldownUntil = 0
 
 function startCalibration() {
   isCalibrating.value = true
@@ -275,6 +280,51 @@ function updateBall(dt: number, canvas: HTMLCanvasElement) {
 
   const active = computeActiveCells(cols, rows, cellW, cellH)
 
+  // Estimate hand velocity (px/s) from pose centers
+  const centers = (poseTracking.getHandCenterLandmarks?.() || []) as any[]
+  const canvasW = canvas.width
+  const canvasH = canvas.height
+  const mappedCenters: Pt[] = []
+  function mapNorm(nx: number, ny: number): Pt {
+    const x = (useMirrored.value ? (1 - nx) : nx) * canvasW
+    const y = ny * canvasH
+    return { x, y }
+  }
+  for (const c of centers) {
+    if (useMirrored.value || !Hhomo) {
+      mappedCenters.push(mapNorm(c.x, c.y))
+    } else {
+      const p = applyH({ x: c.x * (videoRef.value?.videoWidth || 1), y: c.y * (videoRef.value?.videoHeight || 1) })
+      if (p) mappedCenters.push(p)
+    }
+  }
+  let avgHandVx = 0, avgHandVy = 0
+  if (prevCentersTime > 0 && dt > 0 && prevCenters.length > 0 && mappedCenters.length > 0) {
+    // Nearest-neighbor match for two hands
+    const usedPrev = new Set<number>()
+    let vxSum = 0, vySum = 0, cnt = 0
+    for (const cur of mappedCenters) {
+      let bestI = -1, bestD2 = 1e12
+      for (let i = 0; i < prevCenters.length; i++) {
+        if (usedPrev.has(i)) continue
+        const pr = prevCenters[i]
+        const d2 = (cur.x - pr.x) ** 2 + (cur.y - pr.y) ** 2
+        if (d2 < bestD2) { bestD2 = d2; bestI = i }
+      }
+      if (bestI >= 0) {
+        usedPrev.add(bestI)
+        const pr = prevCenters[bestI]
+        vxSum += (cur.x - pr.x) / dt
+        vySum += (cur.y - pr.y) / dt
+        cnt++
+      }
+    }
+    if (cnt > 0) { avgHandVx = vxSum / cnt; avgHandVy = vySum / cnt }
+  }
+  // Update previous centers/time for next frame
+  prevCenters = mappedCenters
+  prevCentersTime = (performance.now() / 1000)
+
   const c0 = clampInt(Math.floor((ball.x - ball.r) / cellW), 0, cols - 1)
   const r0 = clampInt(Math.floor((ball.y - ball.r) / cellH), 0, rows - 1)
   const c1 = clampInt(Math.floor((ball.x + ball.r) / cellW), 0, cols - 1)
@@ -298,12 +348,37 @@ function updateBall(dt: number, canvas: HTMLCanvasElement) {
     ax /= hitCenters.length; ay /= hitCenters.length
     const len = Math.hypot(ax, ay) || 1
     const nx = ax / len, ny = ay / len
+    const nowMs = performance.now()
+    // Only process a hit if moving toward the hand (incoming) and not on cooldown
+    const vdotn = ball.vx * nx + ball.vy * ny
+    if (vdotn > 0 || nowMs < collisionCooldownUntil) {
+      return
+    }
+    // Reflect current velocity along collision normal (with slight restitution)
     const curSpeed = Math.hypot(ball.vx, ball.vy)
     const baseSpeed = Math.max(160, Math.min(canvas.width, canvas.height) * 0.35)
     const maxSpeed = baseSpeed * 1.4
-    const nextSpeed = Math.min(curSpeed * 1.02, maxSpeed)
-    ball.vx = nx * nextSpeed
-    ball.vy = ny * nextSpeed
+    const targetSpeed = Math.min(curSpeed * 1.01, maxSpeed)
+    let newVx = nx * targetSpeed
+    let newVy = ny * targetSpeed
+    // Impart additional velocity from hand movement (impulse-like)
+    const impulseGain = 0.25 // how much hand velocity contributes
+    newVx += impulseGain * avgHandVx
+    newVy += impulseGain * avgHandVy
+    // Clamp final speed
+    const newSpeed = Math.hypot(newVx, newVy)
+    const capped = Math.min(newSpeed, maxSpeed)
+    const scale = newSpeed > 1e-3 ? (capped / newSpeed) : 1
+    ball.vx = newVx * scale
+    ball.vy = newVy * scale
+    // Positional correction to push ball out of overlap a bit
+    const minCell = Math.min(cellW, cellH)
+    ball.x += nx * (minCell * 0.25)
+    ball.y += ny * (minCell * 0.25)
+    // Set a short cooldown so we don't collide multiple times with the same hand overlap
+    const clearanceDist = ball.r * 0.6 + minCell * 0.2
+    const exitTimeMs = Math.min(220, Math.max(60, (clearanceDist / Math.max(40, Math.hypot(ball.vx, ball.vy))) * 1000))
+    collisionCooldownUntil = nowMs + exitTimeMs
     score.value += 1
   }
 }
