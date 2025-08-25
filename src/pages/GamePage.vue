@@ -68,6 +68,7 @@ const currentGameComponent = computed(() => {
     'PointerTest': defineAsyncComponent(() => import('src/games/pointer-test/PointerTest.vue')),
     'HdmiTest': defineAsyncComponent(() => import('src/games/hdmi-test/HdmiTest.vue')),
     'HdmiGridTest': defineAsyncComponent(() => import('src/games/hdmi-grid-test/HdmiGridTest.vue')),
+    'GridPongGame': defineAsyncComponent(() => import('src/games/grid-pong/GridPongGame.vue')),
     'PongTest': defineAsyncComponent(() => import('src/games/pong-test/PongTest.vue'))
   }
 

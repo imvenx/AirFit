@@ -30,6 +30,26 @@ export const gameConfigs: GameConfig[] = [
     showBackButton: true
   },
   {
+    id: 'grid-pong',
+    name: 'Grid Pong',
+    description: 'Play pixelated pong on a big grid using your hands.',
+    icon: '🟨',
+    component: 'GridPongGame',
+    requiresCamera: true,
+    requiresHandTracking: true,
+    requiresPoseTracking: false,
+    requiresGestureRecognition: false,
+    category: 'utility',
+    difficulty: 'easy',
+    estimatedDuration: 3,
+    isActive: true,
+    devOnly: true,
+    rules: 'Calibrate the display, then hit the pixel-ball by moving your hands. Hand shadows are shown as lit cells.',
+    loadingText: 'Setting up camera and hand tracking...',
+    startButtonText: 'Start Grid Pong',
+    showBackButton: true
+  },
+  {
     id: 'pong-test',
     name: 'Pong Test',
     description: 'Play Pong using your hands as paddles.',
