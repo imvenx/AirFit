@@ -30,6 +30,26 @@ export const gameConfigs: GameConfig[] = [
     showBackButton: true
   },
   {
+    id: 'grid-pong-pose',
+    name: 'Grid Pong (Pose)',
+    description: 'Grid Pong using fast pose-based hand centers.',
+    icon: '🟨',
+    component: 'GridPongPose',
+    requiresCamera: true,
+    requiresHandTracking: false,
+    requiresPoseTracking: true,
+    requiresGestureRecognition: false,
+    category: 'utility',
+    difficulty: 'easy',
+    estimatedDuration: 3,
+    isActive: true,
+    devOnly: true,
+    rules: 'Use Mirror mode for laptop camera, or calibrate corners for HDMI projection. Hit the pixel-ball with your hand shadow.',
+    loadingText: 'Setting up camera and pose tracking...',
+    startButtonText: 'Start Grid Pong (Pose)',
+    showBackButton: true
+  },
+  {
     id: 'grid-pong',
     name: 'Grid Pong',
     description: 'Play pixelated pong on a big grid using your hands.',
