@@ -30,6 +30,26 @@ export const gameConfigs: GameConfig[] = [
     showBackButton: true
   },
   {
+    id: 'hdmi-test',
+    name: 'HDMI Test',
+    description: 'Calibrate your display and map hand touches onto the canvas',
+    icon: '🖥️',
+    component: 'HdmiTest',
+    requiresCamera: true,
+    requiresHandTracking: true,
+    requiresPoseTracking: false,
+    requiresGestureRecognition: false,
+    category: 'utility',
+    difficulty: 'easy',
+    estimatedDuration: 2,
+    isActive: true,
+    devOnly: true,
+    rules: 'Click 4 corners on camera view, then touch the screen to see the mapped circle',
+    loadingText: 'Setting up camera and hand tracking...',
+    startButtonText: 'Start HDMI Test',
+    showBackButton: true
+  },
+  {
     id: 'bubble-bop',
     name: 'Bubble Bop',
     description: 'Pop bubbles using hand gestures in this fun AR game!',
