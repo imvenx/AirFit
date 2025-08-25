@@ -17,6 +17,9 @@
         <div class="grid-inputs">
           <q-input dense outlined type="number" min="1" max="200" style="width: 88px" v-model.number="gridCols" label="Cols" />
           <q-input dense outlined type="number" min="1" max="200" style="width: 88px" v-model.number="gridRows" label="Rows" />
+          <q-input dense outlined type="number" step="0.1" min="0.5" max="6" style="width: 110px" v-model.number="sampleDensityFactor" label="Samples x" />
+          <q-input dense outlined type="number" step="0.01" min="0.02" max="0.25" style="width: 110px" v-model.number="fingerRadiusFactor" label="Bone k" />
+          <q-input dense outlined type="number" step="0.01" min="0.01" max="0.2" style="width: 110px" v-model.number="jointRadiusFactor" label="Joint k" />
         </div>
       </div>
     </div>
@@ -56,6 +59,14 @@ const { initializeHandTracking, startTracking, stopTracking, landmarks } = useHa
 // Grid settings (editable)
 const gridCols = ref(6)
 const gridRows = ref(4)
+
+// Finger/hand highlight tuning
+// sampleDensityFactor: samples per cell length along segments
+// fingerRadiusFactor: capsule (bone) radius proportional to reference hand length
+// jointRadiusFactor: joint disc radius proportional to reference hand length
+const sampleDensityFactor = ref(2.0)
+const fingerRadiusFactor = ref(0.08)
+const jointRadiusFactor = ref(0.06)
 
 // Calibration state
 const isCalibrating = ref(false)
@@ -233,27 +244,55 @@ function computeActiveCells(cols: number, rows: number, cellW: number, cellH: nu
   const hands = landmarks.value
   if (!hands || hands.length === 0) return active
   const lm = hands[0]
-  // Landmark indices
+  // Map all 21 landmarks to canvas
+  const mapped: Array<{x:number,y:number} | null> = new Array(lm.length).fill(null)
+  for (let i = 0; i < lm.length; i++) {
+    const px = lm[i].x * video.videoWidth
+    const py = lm[i].y * video.videoHeight
+    mapped[i] = applyH({ x: px, y: py })
+  }
+
   const WRIST = 0
-  const TIPS = [4, 8, 12, 16, 20]
-  const wristCam = { x: lm[WRIST].x * video.videoWidth, y: lm[WRIST].y * video.videoHeight }
-  const wrist = applyH(wristCam)
-  if (!wrist) return active
+  const MID_TIP = 12
+  const wrist = mapped[WRIST]
+  const midTip = mapped[MID_TIP]
+  if (!wrist || !midTip) return active
+
+  const Lref = Math.hypot(midTip.x - wrist.x, midTip.y - wrist.y)
   const baseRadiusPx = 0.35 * Math.min(cellW, cellH)
-  for (const tipIdx of TIPS) {
-    const tipCam = { x: lm[tipIdx].x * video.videoWidth, y: lm[tipIdx].y * video.videoHeight }
-    const tip = applyH(tipCam)
-    if (!tip) continue
-    const dx = tip.x - wrist.x
-    const dy = tip.y - wrist.y
+  const jointR = clampFloat(Lref * jointRadiusFactor.value, baseRadiusPx * 0.4, baseRadiusPx * 1.5)
+  const boneR = clampFloat(Lref * fingerRadiusFactor.value, baseRadiusPx * 0.6, baseRadiusPx * 2.0)
+
+  // Stamp joints
+  for (let i = 0; i < mapped.length; i++) {
+    const p = mapped[i]
+    if (!p) continue
+    stampCircleCells(active, p.x, p.y, jointR, cols, rows, cellW, cellH)
+  }
+
+  // Hand connections to approximate surface (includes palm cross links)
+  const CONNS: Array<[number, number]> = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [0,9],[9,10],[10,11],[11,12],
+    [0,13],[13,14],[14,15],[15,16],
+    [0,17],[17,18],[18,19],[19,20],
+    [5,9],[9,13],[13,17]
+  ]
+  const minCell = Math.min(cellW, cellH)
+  for (const [a, b] of CONNS) {
+    const pa = mapped[a]
+    const pb = mapped[b]
+    if (!pa || !pb) continue
+    const dx = pb.x - pa.x
+    const dy = pb.y - pa.y
     const L = Math.hypot(dx, dy)
-    const samples = clampInt(Math.round((L / Math.min(cellW, cellH)) * 2.0) + 2, 3, 30)
-    const radius = clampFloat(L * 0.08, baseRadiusPx * 0.6, baseRadiusPx * 1.8)
+    const samples = clampInt(Math.round((L / minCell) * sampleDensityFactor.value) + 2, 3, 80)
     for (let s = 0; s < samples; s++) {
-      const t = 0.35 + (s / (samples - 1)) * 0.65 // avoid near-wrist region
-      const cx = wrist.x + t * dx
-      const cy = wrist.y + t * dy
-      stampCircleCells(active, cx, cy, radius, cols, rows, cellW, cellH)
+      const t = s / (samples - 1)
+      const cx = pa.x + t * dx
+      const cy = pa.y + t * dy
+      stampCircleCells(active, cx, cy, boneR, cols, rows, cellW, cellH)
     }
   }
   return active
