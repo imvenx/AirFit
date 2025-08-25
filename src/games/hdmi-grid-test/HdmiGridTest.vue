@@ -88,6 +88,7 @@ function startCalibration() {
   srcCorners = []
   H = null
   drawMiniOverlay()
+  saveSettings()
 }
 
 function resetCalibration() {
@@ -96,6 +97,7 @@ function resetCalibration() {
   srcCorners = []
   H = null
   drawMiniOverlay()
+  saveSettings()
 }
 
 function onMiniOverlayClick(e: MouseEvent) {
@@ -116,6 +118,7 @@ function onMiniOverlayClick(e: MouseEvent) {
     computeHomographyForCurrentCanvas()
   }
   drawMiniOverlay()
+  saveSettings()
 }
 
 function computeHomographyForCurrentCanvas() {
@@ -130,6 +133,7 @@ function computeHomographyForCurrentCanvas() {
     { x: 0, y: Hh }
   ]
   H = computeHomography(srcCorners, dst)
+  saveSettings()
 }
 
 function applyH(p: Pt): Pt | null {
@@ -422,6 +426,7 @@ onMounted(async () => {
   setTimeout(drawMiniOverlay, 50)
   await initializeHandTracking().catch(() => {})
   await startTracking().catch(() => {})
+  loadPersistedSettings()
   window.addEventListener('resize', () => {
     resizeScreenCanvas()
     drawMiniOverlay()
@@ -445,6 +450,55 @@ watch(landmarks, () => {
   // We only need to redraw based on current bounds
   drawGridAndHighlight()
 })
+
+// ---- Persistence (localStorage) ----
+const STORAGE_KEY = 'hdmiGridTestSettings_v1'
+
+function saveSettings() {
+  try {
+    const payload = {
+      srcCorners,
+      gridCols: gridCols.value,
+      gridRows: gridRows.value,
+      sampleDensityFactor: sampleDensityFactor.value,
+      fingerRadiusFactor: fingerRadiusFactor.value,
+      jointRadiusFactor: jointRadiusFactor.value
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+  } catch (e) {
+    // ignore
+  }
+}
+
+function loadPersistedSettings() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return
+    const obj = JSON.parse(raw)
+    if (Array.isArray(obj.srcCorners) && obj.srcCorners.length === 4) {
+      srcCorners = obj.srcCorners
+      computeHomographyForCurrentCanvas()
+    }
+    if (Number.isFinite(obj.gridCols)) gridCols.value = Math.max(1, Math.floor(obj.gridCols))
+    if (Number.isFinite(obj.gridRows)) gridRows.value = Math.max(1, Math.floor(obj.gridRows))
+    if (Number.isFinite(obj.sampleDensityFactor)) sampleDensityFactor.value = obj.sampleDensityFactor
+    if (Number.isFinite(obj.fingerRadiusFactor)) fingerRadiusFactor.value = obj.fingerRadiusFactor
+    if (Number.isFinite(obj.jointRadiusFactor)) jointRadiusFactor.value = obj.jointRadiusFactor
+    // Render with restored settings
+    drawMiniOverlay()
+    drawGridAndHighlight()
+  } catch (e) {
+    // ignore
+  }
+}
+
+watch([gridCols, gridRows, sampleDensityFactor, fingerRadiusFactor, jointRadiusFactor], () => {
+  saveSettings()
+  drawGridAndHighlight()
+})
+
+// Also persist before unload (fallback)
+window.addEventListener('beforeunload', saveSettings)
 
 function startAutoCalibration() {
   if (autoCalibrating.value) return
