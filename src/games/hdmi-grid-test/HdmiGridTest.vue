@@ -14,6 +14,10 @@
         <q-btn dense color="secondary" @click="startAutoCalibration" :disable="autoCalibrating">Auto-Calibrate (ArUco)</q-btn>
         <q-btn dense color="accent" @click="startAutoCalibrationColor" :disable="autoCalibrating">Auto-Calibrate (Color)</q-btn>
         <q-btn dense color="positive" @click="startAutoCalibrationGrid" :disable="autoCalibrating">Auto-Calibrate (Grid)</q-btn>
+        <div class="grid-inputs">
+          <q-input dense outlined type="number" min="1" max="200" style="width: 88px" v-model.number="gridCols" label="Cols" />
+          <q-input dense outlined type="number" min="1" max="200" style="width: 88px" v-model.number="gridRows" label="Rows" />
+        </div>
       </div>
     </div>
 
@@ -49,10 +53,9 @@ const markerOverlayRef = ref<HTMLCanvasElement | null>(null)
 const { enableCamera, stopCamera, error } = useCamera(videoRef)
 const { initializeHandTracking, startTracking, stopTracking, landmarks } = useHandTracking(videoRef, miniOverlayRef, 2)
 
-// Grid settings
-const GRID_COLS = 6
-const GRID_ROWS = 4
-let activeCell: { c: number, r: number } | null = null
+// Grid settings (editable)
+const gridCols = ref(6)
+const gridRows = ref(4)
 
 // Calibration state
 const isCalibrating = ref(false)
@@ -196,25 +199,65 @@ function drawGridAndHighlight() {
   ctx.save()
   ctx.strokeStyle = 'rgba(255,255,255,0.5)'
   ctx.lineWidth = 1
-  const cellW = canvas.width / GRID_COLS
-  const cellH = canvas.height / GRID_ROWS
-  for (let c = 1; c < GRID_COLS; c++) {
+  const cols = Math.max(1, gridCols.value)
+  const rows = Math.max(1, gridRows.value)
+  const cellW = canvas.width / cols
+  const cellH = canvas.height / rows
+  for (let c = 1; c < cols; c++) {
     const x = Math.round(c * cellW)
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke()
   }
-  for (let r = 1; r < GRID_ROWS; r++) {
+  for (let r = 1; r < rows; r++) {
     const y = Math.round(r * cellH)
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke()
   }
-
-  // Highlight active cell
-  if (activeCell) {
-    const x = activeCell.c * cellW
-    const y = activeCell.r * cellH
-    ctx.fillStyle = 'rgba(255, 215, 0, 0.4)'
-    ctx.fillRect(x, y, cellW, cellH)
+  
+  // Highlight all cells overlapped by hand bounding box
+  const rect = currentHandCanvasBounds()
+  if (rect) {
+    const c0 = clampInt(Math.floor(rect.x / cellW), 0, cols - 1)
+    const r0 = clampInt(Math.floor(rect.y / cellH), 0, rows - 1)
+    const c1 = clampInt(Math.floor((rect.x + rect.w) / cellW), 0, cols - 1)
+    const r1 = clampInt(Math.floor((rect.y + rect.h) / cellH), 0, rows - 1)
+    ctx.fillStyle = 'rgba(255, 215, 0, 0.35)'
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        ctx.fillRect(c * cellW, r * cellH, cellW, cellH)
+      }
+    }
   }
   ctx.restore()
+}
+
+function clampInt(v: number, lo: number, hi: number) {
+  return Math.min(hi, Math.max(lo, v | 0))
+}
+
+function currentHandCanvasBounds(): { x: number, y: number, w: number, h: number } | null {
+  const video = videoRef.value
+  if (!video || !H) return null
+  const hands = landmarks.value
+  if (!hands || hands.length === 0) return null
+  // For now, take the first hand; could union multiple hands later
+  const lm = hands[0]
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (let i = 0; i < lm.length; i++) {
+    const px = lm[i].x * video.videoWidth
+    const py = lm[i].y * video.videoHeight
+    const mapped = applyH({ x: px, y: py })
+    if (!mapped) continue
+    if (mapped.x < minX) minX = mapped.x
+    if (mapped.y < minY) minY = mapped.y
+    if (mapped.x > maxX) maxX = mapped.x
+    if (mapped.y > maxY) maxY = mapped.y
+  }
+  if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) return null
+  const x = Math.max(0, minX)
+  const y = Math.max(0, minY)
+  const w = Math.max(0, maxX - x)
+  const h = Math.max(0, maxY - y)
+  if (w < 2 && h < 2) return null
+  return { x, y, w, h }
 }
 
 function getMarkerDrawGeometry() {
@@ -335,20 +378,7 @@ watch(landmarks, () => {
   const video = videoRef.value
   const canvas = screenCanvasRef.value
   if (!video || !canvas) { drawGridAndHighlight(); return }
-  const hands = landmarks.value
-  if (!hands || hands.length === 0) { activeCell = null; drawGridAndHighlight(); return }
-  const lm = hands[0]
-  const ptCam = { x: lm[8].x * video.videoWidth, y: lm[8].y * video.videoHeight }
-  const mapped = applyH(ptCam)
-  if (!mapped) { activeCell = null; drawGridAndHighlight(); return }
-  // Compute cell index
-  const c = Math.floor((mapped.x / Math.max(1, canvas.width)) * GRID_COLS)
-  const r = Math.floor((mapped.y / Math.max(1, canvas.height)) * GRID_ROWS)
-  if (c < 0 || r < 0 || c >= GRID_COLS || r >= GRID_ROWS) {
-    activeCell = null
-  } else {
-    activeCell = { c, r }
-  }
+  // We only need to redraw based on current bounds
   drawGridAndHighlight()
 })
 
@@ -667,6 +697,7 @@ function findEdgeFromEnd(arr: Float32Array, thr: number): number | null {
 .hud .title { font-size: 20px; font-weight: 700; }
 .hud .hint { opacity: 0.8; margin: 4px 0 8px; }
 .buttons { display: flex; gap: 8px; }
+.grid-inputs { display: flex; gap: 8px; align-items: center; }
 
 .mini-camera {
   position: absolute;
