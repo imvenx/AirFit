@@ -8,12 +8,13 @@
         Calibrate 4 corners on the camera view, then hit the pixel-ball with your hands. Bigger grid squares for a chunky look.
       </div>
       <div class="controls">
-        <q-btn dense color="primary" @click="startCalibration">Calibrate Corners</q-btn>
-        <q-btn dense flat color="white" @click="resetCalibration">Reset</q-btn>
+        <q-btn dense color="primary" @click="startCalibration" :disable="useMirrored">Calibrate Corners</q-btn>
+        <q-btn dense flat color="white" @click="resetCalibration" :disable="useMirrored">Reset</q-btn>
         <div class="grid-inputs">
           <q-input dense outlined type="number" min="1" max="100" style="width: 88px" v-model.number="gridCols" label="Cols" />
           <q-input dense outlined type="number" min="1" max="100" style="width: 88px" v-model.number="gridRows" label="Rows" />
           <q-input dense outlined type="number" min="2" max="40" style="width: 120px" v-model.number="ballCellRadius" label="Ball cells" />
+          <q-toggle v-model="useMirrored" label="Mirror mode" />
         </div>
         <div class="score">Score: {{ score }}</div>
       </div>
@@ -49,6 +50,8 @@ const gridCols = ref(200)
 const gridRows = ref(200)
 // Ball size in number of grid cells (radius)
 const ballCellRadius = ref(12)
+// Mirror mode (maps to whole viewport with horizontal flip; ignores calibration)
+const useMirrored = ref(false)
 
 // Hand highlight tuning (copied from grid test, slightly simplified)
 const sampleDensityFactor = ref(2.0)
@@ -195,7 +198,7 @@ function clampFloat(v: number, lo: number, hi: number) { return Math.min(hi, Mat
 function computeActiveCells(cols: number, rows: number, cellW: number, cellH: number): Set<string> {
   const active = new Set<string>()
   const video = videoRef.value
-  if (!video || !Hhomo) return active
+  if (!video) return active
   const hands = landmarks.value
   if (!hands || hands.length === 0) return active
 
@@ -211,12 +214,25 @@ function computeActiveCells(cols: number, rows: number, cellW: number, cellH: nu
   const minCell = Math.min(cellW, cellH)
   const baseRadiusPx = 0.35 * minCell
 
+  const canvasW = cols * cellW
+  const canvasH = rows * cellH
+
+  function mapNorm(nx: number, ny: number): Pt {
+    const x = (useMirrored.value ? (1 - nx) : nx) * canvasW
+    const y = ny * canvasH
+    return { x, y }
+  }
+
   for (const lm of hands) {
     const mapped: Array<Pt | null> = new Array(lm.length).fill(null)
     for (let i = 0; i < lm.length; i++) {
-      const px = lm[i].x * video.videoWidth
-      const py = lm[i].y * video.videoHeight
-      mapped[i] = applyH({ x: px, y: py })
+      if (useMirrored.value || !Hhomo) {
+        mapped[i] = mapNorm(lm[i].x, lm[i].y)
+      } else {
+        const px = lm[i].x * video.videoWidth
+        const py = lm[i].y * video.videoHeight
+        mapped[i] = applyH({ x: px, y: py })
+      }
     }
     const WRIST = 0, MID_TIP = 12
     const wrist = mapped[WRIST]
@@ -483,6 +499,9 @@ watch([gridCols, gridRows, ballCellRadius], () => {
   recomputeBallRadius()
   saveSettings()
 })
+watch(useMirrored, () => {
+  saveSettings()
+})
 
 // ---- Persistence (localStorage) ----
 const STORAGE_KEY = 'gridPongSettings_v1'
@@ -493,7 +512,8 @@ function saveSettings() {
       srcCorners,
       gridCols: gridCols.value,
       gridRows: gridRows.value,
-      ballCellRadius: ballCellRadius.value
+      ballCellRadius: ballCellRadius.value,
+      useMirrored: useMirrored.value
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
   } catch (e) {
@@ -516,6 +536,7 @@ function loadPersistedSettings() {
     if (typeof parsed.gridCols === 'number') gridCols.value = parsed.gridCols
     if (typeof parsed.gridRows === 'number') gridRows.value = parsed.gridRows
     if (typeof parsed.ballCellRadius === 'number') ballCellRadius.value = parsed.ballCellRadius
+    if (typeof parsed.useMirrored === 'boolean') useMirrored.value = parsed.useMirrored
   } catch (e) {
     // ignore
   }
