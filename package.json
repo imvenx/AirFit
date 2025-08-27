@@ -11,7 +11,8 @@
     "preview": "VITE_PREVIEW_MODE=true quasar dev",
     "dev:android": "npx quasar dev -m capacitor -T android",
     "build:android": "npx quasar build -m capacitor -T android",
-    "build": "quasar build"
+    "build": "quasar build",
+    "deploy:pages": "quasar build"
   },
   "dependencies": {
     "@babylonjs/core": "^8.20.0",
