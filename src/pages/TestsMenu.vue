@@ -36,13 +36,13 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useScores } from 'src/composables/useScores'
-import { getVisibleGames } from 'src/config/appConfig'
+import { gameConfigs } from 'src/config/appConfig'
 
 const router = useRouter()
 const { getMaxScore } = useScores()
 
 const devGames = computed(() => {
-  return getVisibleGames()
+  return gameConfigs
     .filter(g => g.devOnly)
     .sort((a, b) => {
       if (a.isActive === b.isActive) return 0

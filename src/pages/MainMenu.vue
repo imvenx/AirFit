@@ -68,7 +68,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useScores } from 'src/composables/useScores'
 import { useI18n } from 'vue-i18n'
-import { getVisibleGames } from 'src/config/appConfig'
+import { getVisibleGames, gameConfigs } from 'src/config/appConfig'
 import { usePWAInstall } from 'src/composables/usePWAInstall'
 
 const router = useRouter()
@@ -103,7 +103,7 @@ const mainGames = computed(() => {
     })
 })
 
-const hasDevGames = computed(() => getVisibleGames().some(g => g.devOnly))
+const hasDevGames = computed(() => gameConfigs.some(g => g.devOnly))
 
 function selectGame(gameId: string) {
   router.push({ name: 'GameWithId', params: { gameId } })
