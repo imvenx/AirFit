@@ -7,11 +7,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import ARWarning from './components/ARWarning.vue';
 import AudioVisualizer from './components/AudioVisualizer.vue';
 import { musicManager } from './utils/musicManager';
+import { resumeGlobalAudioContext } from 'src/games/boxing-trainer/AudioManager'
 
 defineOptions({
   name: 'App'
@@ -22,11 +23,23 @@ const visualizerEnabled = ref(
   localStorage.getItem('visualizerEnabled') !== 'false'
 )
 
+const userInteracted = ref(false)
+
+function markInteractedAndUnlock() {
+  if (userInteracted.value) return
+  userInteracted.value = true
+  resumeGlobalAudioContext()
+  // If we are on main menu and nothing is playing yet, start menu music
+  if (route.name === 'MainMenu' && musicManager.getCurrentTrack() !== 'menu') {
+    musicManager.play('menu')
+  }
+}
+
 // Watch route changes to manage music
 watch(() => route.name, (newRouteName) => {
   if (newRouteName === 'MainMenu') {
     const currentTrack = musicManager.getCurrentTrack()
-    if (currentTrack !== 'menu') {
+    if (currentTrack !== 'menu' && userInteracted.value) {
       musicManager.play('menu')
     }
     visualizerEnabled.value = localStorage.getItem('visualizerEnabled') !== 'false'
@@ -37,6 +50,9 @@ watch(() => route.name, (newRouteName) => {
 onMounted(async () => {
   setVH()
   window.addEventListener('resize', setVH)
+  // Unlock audio on first user gesture
+  window.addEventListener('pointerdown', markInteractedAndUnlock, { once: true })
+  window.addEventListener('keydown', markInteractedAndUnlock, { once: true })
 
   // Check music track every 500ms to detect when game music starts
   const musicCheckInterval = window.setInterval(() => {
@@ -53,6 +69,11 @@ onMounted(async () => {
       }
     }
   }, 500)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', markInteractedAndUnlock)
+  window.removeEventListener('keydown', markInteractedAndUnlock)
 })
 
 function setVH() {

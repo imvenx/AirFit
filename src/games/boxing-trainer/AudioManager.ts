@@ -209,3 +209,17 @@ export class AudioManager {
     }
   }
 }
+
+// Allow app to proactively resume or create the shared audio context after a user gesture
+export async function resumeGlobalAudioContext() {
+  try {
+    if (!sharedAudioContext) {
+      sharedAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+    }
+    if (sharedAudioContext.state === 'suspended') {
+      await sharedAudioContext.resume()
+    }
+  } catch (e) {
+    // ignore
+  }
+}
