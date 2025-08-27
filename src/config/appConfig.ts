@@ -2,10 +2,10 @@ import { ref } from 'vue'
 import { GameConfig, MediaPipeConfig } from 'src/types/game'
 
 export const mediaPipeConfig: MediaPipeConfig = {
-  modelsPath: '/models/tasks-vision@0.10.18',
-  handLandmarkerPath: '/models/hand_landmarker.task',
-  poseLandmarkerPath: '/models/pose_landmarker.task',
-  gestureRecognizerPath: '/models/gesture_recognizer.task'
+  modelsPath: 'models/tasks-vision@0.10.18',
+  handLandmarkerPath: 'models/hand_landmarker.task',
+  poseLandmarkerPath: 'models/pose_landmarker.task',
+  gestureRecognizerPath: 'models/gesture_recognizer.task'
 }
 
 export const gameConfigs: GameConfig[] = [

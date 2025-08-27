@@ -132,7 +132,7 @@ function startActualGame() {
   musicManager.play('boxing')
   
   // Play boxing bells sound effect
-  const bellsSound = new Audio('/boxing-bells.mp3')
+  const bellsSound = new Audio('boxing-bells.mp3')
   bellsSound.volume = 0.7
   bellsSound.play().catch(console.warn)
   
@@ -246,7 +246,7 @@ function resetGame() {
   musicManager.play('boxing')
   
   // Play boxing bells sound effect
-  const bellsSound = new Audio('/boxing-bells.mp3')
+  const bellsSound = new Audio('boxing-bells.mp3')
   bellsSound.volume = 0.7
   bellsSound.play().catch(console.warn)
   

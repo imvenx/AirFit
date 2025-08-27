@@ -73,7 +73,7 @@ export class HeavyBag implements BoxingBag {
     this.bagImage.onerror = () => {
       this.bagImage = null
     }
-    this.bagImage.src = '/boxing-bag.png'
+    this.bagImage.src = 'boxing-bag.png'
   }
 
   private getStartPosition(targetPos: { x: number, y: number }): Vector2 {

@@ -8,8 +8,8 @@
 
       <div class="rules-section" v-if="gameConfig.rules">
         <div v-if="gameConfig.id === 'boxing-trainer'" class="boxing-animation">
-          <object data="/boxing_animation.svg" type="image/svg+xml" class="boxing-svg">
-            <img src="/boxing_animation.svg" alt="Boxing Animation" />
+          <object data="boxing_animation.svg" type="image/svg+xml" class="boxing-svg">
+            <img src="boxing_animation.svg" alt="Boxing Animation" />
           </object>
         </div>
         <div v-else>

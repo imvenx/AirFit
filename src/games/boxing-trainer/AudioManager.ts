@@ -18,7 +18,7 @@ export class AudioManager {
     
     sharedPunchLoading = true
     try {
-      const response = await fetch('/punch-sound.mp3')
+      const response = await fetch('punch-sound.mp3')
       const arrayBuffer = await response.arrayBuffer()
       sharedPunchBuffer = await sharedAudioContext.decodeAudioData(arrayBuffer)
     } catch (error) {

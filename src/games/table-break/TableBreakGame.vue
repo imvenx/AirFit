@@ -298,7 +298,7 @@ function destroyAndCreateNewTable() {
   }
 
   // Play table break sound
-  const breakSound = new Audio('/table-break.mp3')
+  const breakSound = new Audio('table-break.mp3')
   breakSound.volume = 0.35
   breakSound.play().catch(console.warn)
 

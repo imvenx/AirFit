@@ -52,13 +52,13 @@ watch(() => isGameStarted.value, (isGameStarted) => {
 async function createHandLandmarker() {
   // download url: https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/
   const vision = await FilesetResolver.forVisionTasks(
-    "/models/tasks-vision@0.10.18"
+    "models/tasks-vision@0.10.18"
   );
 
   // download url: https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
   handLandmarker = await HandLandmarker.createFromOptions(vision, {
     baseOptions: {
-      modelAssetPath: `/models/hand_landmarker.task`,
+      modelAssetPath: `models/hand_landmarker.task`,
       delegate: "GPU"
     },
     runningMode: runningMode,

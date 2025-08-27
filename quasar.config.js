@@ -12,7 +12,7 @@
 const { configure } = require('quasar/wrappers');
 
 
-module.exports = configure(function (/* ctx */) {
+module.exports = configure(function (ctx) {
   return {
     bin: {
       linuxAndroidStudio: '/home/v/.local/share/Trash/files/android-studio/bin/studio.sh'
@@ -60,7 +60,7 @@ module.exports = configure(function (/* ctx */) {
 
       // rebuildCache: true, // rebuilds Vite/linter/etc cache on startup
 
-      // publicPath: '/',
+      publicPath: ctx.dev ? '/' : '/AirFit/',
       // analyze: true,
       // env: {},
       // rawDefine: {}
@@ -68,10 +68,8 @@ module.exports = configure(function (/* ctx */) {
       // minify: false,
       // polyfillModulePreload: true,
       // distDir: '/home/v/AndroidStudioProjects/BubbleBopAR/app/src/main/assets',
-
-      extendViteConf(viteConf) {
-        viteConf.base = './'
-      },
+      distDir: 'docs',
+      // No need to override Vite base; publicPath handles it
       // viteVuePluginOptions: {},
 
 

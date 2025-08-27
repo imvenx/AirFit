@@ -56,7 +56,7 @@ async function loadPunchBuffer() {
   
   try {
     status.value = 'Loading MP3 file...'
-    const response = await fetch('/punch-sound.mp3')
+    const response = await fetch('punch-sound.mp3')
     const arrayBuffer = await response.arrayBuffer()
     punchBuffer = await audioContext.decodeAudioData(arrayBuffer)
     status.value = 'MP3 loaded successfully'
@@ -103,7 +103,7 @@ async function playPunchSound(intensity: number) {
 function playDirectMP3() {
   try {
     if (!directAudio) {
-      directAudio = new Audio('/punch-sound.mp3')
+      directAudio = new Audio('punch-sound.mp3')
     }
     directAudio.volume = volume.value
     directAudio.currentTime = 0
