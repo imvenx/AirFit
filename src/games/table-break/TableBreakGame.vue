@@ -90,6 +90,19 @@ const formattedTime = computed(() => {
 let bonusId = 1
 const timeBonuses = ref<{ id: number; left: string; top: string; amount: number }[]>([])
 
+// Animation frame + timeout management
+let rafId: number | null = null
+const activeTimeouts: number[] = []
+function addTimeout(fn: () => void, ms: number) {
+  const id = window.setTimeout(() => {
+    // Remove from list on fire
+    const idx = activeTimeouts.indexOf(id)
+    if (idx !== -1) activeTimeouts.splice(idx, 1)
+    try { fn() } catch {}
+  }, ms)
+  activeTimeouts.push(id)
+}
+
 onMounted(async () => {
   try {
     // Load table images
@@ -154,10 +167,10 @@ function startGameLoop() {
     checkKneeCollision()
     drawTable()
     drawLandmarks()
-    requestAnimationFrame(gameLoop)
+    rafId = requestAnimationFrame(gameLoop)
   }
 
-  requestAnimationFrame(gameLoop)
+  rafId = requestAnimationFrame(gameLoop)
 }
 
 function checkHandsOnTable() {
@@ -277,11 +290,11 @@ function destroyAndCreateNewTable() {
   // Trigger timer bump animation
   timerBump.value = false
   requestAnimationFrame(() => { timerBump.value = true })
-  setTimeout(() => { timerBump.value = false }, 250)
+  addTimeout(() => { timerBump.value = false }, 250)
 
   // Temporary gain color state
   timerGain.value = true
-  setTimeout(() => { timerGain.value = false }, 350)
+  addTimeout(() => { timerGain.value = false }, 350)
 
   // Spawn floating bonus text at table center
   if (canvasEl.value) {
@@ -292,7 +305,7 @@ function destroyAndCreateNewTable() {
     const id = bonusId++
     timeBonuses.value.push({ id, left: leftPct, top: topPct, amount: bonus })
     // Remove after animation completes
-    setTimeout(() => {
+    addTimeout(() => {
       timeBonuses.value = timeBonuses.value.filter(b => b.id !== id)
     }, 900)
   }
@@ -318,7 +331,7 @@ function destroyAndCreateNewTable() {
   showExplosion.value = true
 
   // Hide explosion after short time
-  setTimeout(() => {
+  addTimeout(() => {
     showExplosion.value = false
   }, 300)
 
@@ -447,6 +460,18 @@ function drawLandmarks() {
 }
 
 onUnmounted(() => {
+  // Stop any pending animations/timeouts
+  if (rafId != null) {
+    cancelAnimationFrame(rafId)
+    rafId = null
+  }
+  activeTimeouts.splice(0).forEach(clearTimeout)
+
+  // Ensure game is marked inactive to stop any pending logic
+  if (gameFramework.isGameActive.value) {
+    gameFramework.endGame()
+  }
+
   camera.stopCamera()
   handTracking.stopTracking()
   poseTracking.stopTracking()
