@@ -6,16 +6,23 @@
         <div class="header-actions">
           <q-btn v-if="canInstall && !installed" outline color="white" size="sm" icon="download" label="Install"
             class="install-btn" @click="installApp" />
-          <q-btn-toggle v-model="locale" toggle-color="primary" :options="[
-          { label: 'EN', value: 'en' },
-          { label: 'ES', value: 'es' },
-          { label: 'FR', value: 'fr' },
-          { label: 'PT', value: 'pt' },
-          { label: 'DE', value: 'de' },
-          { label: 'JA', value: 'ja' },
-          { label: 'KO', value: 'ko' },
-          { label: 'HI', value: 'hi' }
-        ]" @update:model-value="switchLanguage" size="sm" class="language-toggle" />
+
+          <q-btn outline color="white" :size="$q.screen.lt.md ? 'md' : 'lg'" class="lang-btn"
+                 @click="langMenu = !langMenu" @mouseenter="langMenu = true">
+            <q-icon name="language" :size="$q.screen.lt.md ? 'md' : 'lg'" class="q-mr-sm" />
+            <span class="gt-xs">{{ (locale as string).toUpperCase() }}</span>
+            <q-tooltip>Language</q-tooltip>
+            <q-menu v-model="langMenu" anchor="bottom right" self="top right" @mouseleave="langMenu = false">
+              <q-list separator>
+                <q-item v-for="opt in langOptions" :key="opt.value" clickable v-close-popup @click="switchLanguage(opt.value)">
+                  <q-item-section>{{ opt.label }}</q-item-section>
+                  <q-item-section side>
+                    <q-icon v-if="opt.value === locale" name="check" />
+                  </q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
         </div>
       </div>
     </div>
@@ -54,7 +61,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useScores } from 'src/composables/useScores'
 import { useI18n } from 'vue-i18n'
@@ -65,6 +72,18 @@ const router = useRouter()
 const { getMaxScore } = useScores()
 const { locale } = useI18n()
 const { canInstall, installed, promptInstall } = usePWAInstall()
+const langMenu = ref(false)
+
+const langOptions = [
+  { label: 'EN', value: 'en' },
+  { label: 'ES', value: 'es' },
+  { label: 'FR', value: 'fr' },
+  { label: 'PT', value: 'pt' },
+  { label: 'DE', value: 'de' },
+  { label: 'JA', value: 'ja' },
+  { label: 'KO', value: 'ko' },
+  { label: 'HI', value: 'hi' }
+]
 
 function switchLanguage(lang: string) {
   localStorage.setItem('preferred-language', lang)
@@ -194,6 +213,10 @@ async function installApp() {
 }
 
 .install-btn {
+  border-width: 2px;
+}
+
+.lang-btn {
   border-width: 2px;
 }
 
