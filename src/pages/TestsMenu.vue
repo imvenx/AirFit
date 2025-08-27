@@ -2,8 +2,8 @@
   <div class="tests-menu">
     <div class="menu-header">
       <div class="app-title">
+        <q-btn outline color="white" size="lg" icon="arrow_back" label="Back" class="back-btn" @click="goBack" />
         <div class="title-text">Tests</div>
-        <q-btn outline color="white" size="sm" icon="arrow_back" label="Back" class="back-btn" @click="goBack" />
       </div>
     </div>
 
@@ -102,8 +102,8 @@ function goBack() {
 .app-title {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
+  justify-content: flex-start;
+  gap: 1rem;
   padding: 1.2rem 1rem;
 }
 
@@ -174,6 +174,8 @@ function goBack() {
 
 .no-games { text-align: center; padding: 4rem; color: rgba(255, 255, 255, 0.7); }
 
-.back-btn { margin-left: auto; }
+.back-btn {
+  border-width: 2px;
+  padding: 8px 16px;
+}
 </style>
-
