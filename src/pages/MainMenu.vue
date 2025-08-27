@@ -18,7 +18,7 @@
 
     <div class="games-container">
       <div class="games-grid">
-        <div v-for="game in allGames" :key="game.id" class="game-card" :class="{ 'inactive': !game.isActive }"
+        <div v-for="game in mainGames" :key="game.id" class="game-card" :class="{ 'inactive': !game.isActive }"
           @click="game.isActive && selectGame(game.id)">
           <div class="game-icon">{{ game.icon }}</div>
           <div class="game-name">{{ $t(`games.${game.id}.name`) }}</div>
@@ -30,9 +30,18 @@
             <q-chip color="orange" text-color="white" icon="schedule" :label="$t('game.comingSoon')" />
           </div>
         </div>
+
+        <div v-if="hasDevGames" class="game-card" @click="goToTests">
+          <div class="game-icon">🧪</div>
+          <div class="game-name">Tests</div>
+          <div class="game-max-score">
+            <q-icon name="folder" size="sm" />
+            Dev utilities and experiments
+          </div>
+        </div>
       </div>
 
-      <div v-if="allGames.length === 0" class="no-games">
+      <div v-if="mainGames.length === 0 && !hasDevGames" class="no-games">
         <q-icon name="games" size="4rem" color="grey" />
         <div class="text-h6 text-grey">{{ $t('game.noGames') }}</div>
       </div>
@@ -56,17 +65,24 @@ function switchLanguage(lang: string) {
   locale.value = lang
 }
 
-const allGames = computed(() => {
-  // Get all visible games (includes inactive but excludes devOnly in production)
-  return getVisibleGames().sort((a, b) => {
-    // Sort active games first
-    if (a.isActive === b.isActive) return 0
-    return a.isActive ? -1 : 1
-  })
+const mainGames = computed(() => {
+  // Show only non-dev games here; dev tests moved under Tests menu
+  return getVisibleGames()
+    .filter(g => !g.devOnly)
+    .sort((a, b) => {
+      if (a.isActive === b.isActive) return 0
+      return a.isActive ? -1 : 1
+    })
 })
+
+const hasDevGames = computed(() => getVisibleGames().some(g => g.devOnly))
 
 function selectGame(gameId: string) {
   router.push({ name: 'GameWithId', params: { gameId } })
+}
+
+function goToTests() {
+  router.push({ name: 'TestsMenu' })
 }
 
 </script>
