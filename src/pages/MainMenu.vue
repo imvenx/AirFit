@@ -3,7 +3,10 @@
     <div class="menu-header">
       <div class="app-title">
         <div class="title-text">{{ $t('app.title') }}</div>
-        <q-btn-toggle v-model="locale" toggle-color="primary" :options="[
+        <div class="header-actions">
+          <q-btn v-if="canInstall && !installed" outline color="white" size="sm" icon="download" label="Install"
+            class="install-btn" @click="installApp" />
+          <q-btn-toggle v-model="locale" toggle-color="primary" :options="[
           { label: 'EN', value: 'en' },
           { label: 'ES', value: 'es' },
           { label: 'FR', value: 'fr' },
@@ -13,6 +16,7 @@
           { label: 'KO', value: 'ko' },
           { label: 'HI', value: 'hi' }
         ]" @update:model-value="switchLanguage" size="sm" class="language-toggle" />
+        </div>
       </div>
     </div>
 
@@ -55,10 +59,12 @@ import { useRouter } from 'vue-router'
 import { useScores } from 'src/composables/useScores'
 import { useI18n } from 'vue-i18n'
 import { getVisibleGames } from 'src/config/appConfig'
+import { usePWAInstall } from 'src/composables/usePWAInstall'
 
 const router = useRouter()
 const { getMaxScore } = useScores()
 const { locale } = useI18n()
+const { canInstall, installed, promptInstall } = usePWAInstall()
 
 function switchLanguage(lang: string) {
   localStorage.setItem('preferred-language', lang)
@@ -83,6 +89,10 @@ function selectGame(gameId: string) {
 
 function goToTests() {
   router.push({ name: 'TestsMenu' })
+}
+
+async function installApp() {
+  try { await promptInstall() } catch {}
 }
 
 </script>
@@ -175,6 +185,16 @@ function goToTests() {
   text-align: center;
   position: relative;
   z-index: 10;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.install-btn {
+  border-width: 2px;
 }
 
 .title-text {
