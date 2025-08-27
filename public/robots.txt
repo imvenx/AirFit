@@ -1,5 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://imvenx.github.io/AirFit/sitemap.xml
-
+Sitemap: https://imvenx.github.io/airfit/sitemap.xml

@@ -1,7 +1,7 @@
 <template>
   <div class="main-menu">
     <div class="menu-header">
-      <a class="gh-link" href="https://github.com/imvenx/AirFit" target="_blank" rel="noopener noreferrer">
+      <a class="gh-link" href="https://github.com/imvenx/airfit" target="_blank" rel="noopener noreferrer">
         <q-btn round dense outline color="white" :size="$q.screen.lt.md ? 'sm' : 'md'" icon="img:github.svg" aria-label="GitHub" />
       </a>
       <div class="app-title">

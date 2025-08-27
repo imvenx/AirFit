@@ -4,8 +4,8 @@
 
 Camera-based mini games for fitness, built with Quasar + Vue 3. Play directly in your browser using your webcam.
 
-[![Pages](https://img.shields.io/badge/Live-Demo-4CAF50)](https://imvenx.github.io/AirFit/)
-[![Deploy](https://github.com/imvenx/AirFit/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/imvenx/AirFit/actions/workflows/deploy-pages.yml)
+[![Pages](https://img.shields.io/badge/Live-Demo-4CAF50)](https://imvenx.github.io/airfit/)
+[![Deploy](https://github.com/imvenx/airfit/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/imvenx/airfit/actions/workflows/deploy-pages.yml)
 [![Made with Quasar](https://img.shields.io/badge/Quasar-2.x-1976D2?logo=quasar)](https://quasar.dev)
 [![Vue](https://img.shields.io/badge/Vue-3.x-42b883?logo=vue.js)](https://vuejs.org)
 
@@ -23,7 +23,7 @@ Camera-based mini games for fitness, built with Quasar + Vue 3. Play directly in
 
 ## Demo
 
-- Live: https://imvenx.github.io/AirFit/
+- Live: https://imvenx.github.io/airfit/
 
 ## Tech Stack
 
@@ -61,7 +61,7 @@ This repo includes an Actions workflow that builds to `docs/` and deploys to Git
 1) GitHub → Settings → Pages → Build and deployment → Source: “GitHub Actions”
 2) Push to `main` (or run the “Deploy to GitHub Pages” workflow manually)
 
-Quasar config: `publicPath` is set to `/AirFit/` in production and `/` in dev; asset paths are relative (no leading `/`).
+Quasar config: `publicPath` is set to `/airfit/` in production and `/` in dev; asset paths are relative (no leading `/`).
 
 ## Games
 
@@ -102,4 +102,3 @@ npx @quasar/icongenie generate -i ./playstore/images/test2.png --padding 10
 ## License
 
 This project is intended to be open-source. Which license would you prefer (MIT/Apache-2.0/GPL-3.0)? I can add the LICENSE file accordingly.
-

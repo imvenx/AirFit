@@ -2,8 +2,8 @@
   "name": "AirFit",
   "short_name": "AirFit",
   "description": "Camera-based fitness mini games that run in your browser.",
-  "start_url": "/AirFit/",
-  "scope": "/AirFit/",
+  "start_url": "/airfit/",
+  "scope": "/airfit/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#6a5acd",
@@ -15,4 +15,3 @@
     { "src": "icons/favicon-16x16.png", "sizes": "16x16", "type": "image/png" }
   ]
 }
-
