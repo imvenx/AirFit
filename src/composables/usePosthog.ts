@@ -1,11 +1,28 @@
 import posthog from 'posthog-js'
 
-export function usePostHog() {
-    posthog.init(import.meta.env.VITE_POSTHOG_ID, {
-        api_host: 'https://eu.i.posthog.com',
-        defaults: '2025-05-24',
-        person_profiles: 'identified_only', // or 'always' to create profiles for anonymous users as well
-    })
+let initialized = false
 
-    return { posthog }
+export function usePostHog() {
+  if (!initialized) {
+    const token = import.meta.env.VITE_POSTHOG_ID
+    if (token) {
+      posthog.init(token, {
+        api_host: 'https://eu.i.posthog.com',
+        // Avoid cookies on GitHub Pages subpath; use localStorage instead
+        persistence: 'localStorage',
+        // Prevent loading recording and related assets (eu-assets.i.posthog.com)
+        disable_session_recording: true,
+        // Keep profiles limited to identified users only
+        person_profiles: 'identified_only',
+        // Optional: set a static defaults date for feature flags or similar
+        defaults: '2025-05-24',
+      })
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn('PostHog disabled: VITE_POSTHOG_ID is not set')
+    }
+    initialized = true
+  }
+
+  return { posthog }
 }
