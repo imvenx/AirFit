@@ -31,36 +31,12 @@
   default-src 'self';
   base-uri 'self';
   object-src 'none';
-  script-src
-    'self'
-    'unsafe-eval'
-    https://eu.i.posthog.com
-    https://eu-assets.i.posthog.com
-    'sha256-noJR5GiDg26xAW00pHjrrZ5+/uVmXub6Lmfa7HC7kFo=';  <!-- allows your inline SW script -->
-  script-src-elem
-    'self'
-    https://eu.i.posthog.com
-    https://eu-assets.i.posthog.com;
-  connect-src
-    'self'
-    https://eu.i.posthog.com
-    https://eu-assets.i.posthog.com;
-  img-src
-    'self'
-    data:
-    blob:
-    https://eu-assets.i.posthog.com;
-  style-src
-    'self'
-    'unsafe-inline'
-    https://fonts.googleapis.com;
-  font-src
-    'self'
-    data:
-    https://fonts.gstatic.com;
-  frame-src
-    https://eu-assets.i.posthog.com
-    https://eu.i.posthog.com;
+  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://eu.i.posthog.com https://eu-assets.i.posthog.com;
+  connect-src 'self' https://eu.i.posthog.com https://eu-assets.i.posthog.com;
+  img-src 'self' data: blob: https://eu-assets.i.posthog.com;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' data: https://fonts.gstatic.com;
+  frame-src https://eu.i.posthog.com https://eu-assets.i.posthog.com;
   worker-src 'self' blob:;
   media-src 'self' blob:;
 ">
