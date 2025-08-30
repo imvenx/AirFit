@@ -1,3 +1,4 @@
+import { usePostHog } from 'src/composables/usePosthog';
 import { RouteRecordRaw } from 'vue-router';
 
 const routes: RouteRecordRaw[] = [
@@ -19,5 +20,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('pages/ErrorNotFound.vue'),
   },
 ];
+
+const { posthog } = usePostHog()
 
 export default routes;

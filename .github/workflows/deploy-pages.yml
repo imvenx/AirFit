@@ -23,6 +23,8 @@ concurrency:
 jobs:
   # Build job
   build:
+    env: 
+      VITE_POSTHOG_ID: ${{ secrets.VITE_POSTHOG_ID }} 
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
