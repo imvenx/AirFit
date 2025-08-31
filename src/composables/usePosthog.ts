@@ -12,6 +12,13 @@ export function usePostHog() {
         persistence: 'localStorage',
         // Prevent loading recording and related assets (eu-assets.i.posthog.com)
         disable_session_recording: true,
+        // Do not fetch remote config or decide; prevents eu-assets requests
+        // (disables feature flags, autocapture config, etc.)
+        advanced_disable_decide: true as any,
+        // Reduce noise further by disabling autocapture
+        autocapture: false,
+        // Keep initial pageview; for SPAs, capture on route change manually if needed
+        capture_pageview: true,
         // Keep profiles limited to identified users only
         person_profiles: 'identified_only',
         // Optional: set a static defaults date for feature flags or similar
